@@ -1,0 +1,37 @@
+{
+  "name": "@jooservices/vigor3912s-mcp",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "ci": "npm run lint && npm test && npm run build",
+    "e2e": "node tools/e2e.mjs",
+    "e2e:testing": "node tools/e2e_testing_run.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.2",
+    "dotenv": "^16.4.7",
+    "ssh2": "^1.16.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/ssh2": "^1.15.6",
+    "tsx": "^4.23.13",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "allowScripts": {
+    "ssh2@1.17.0": true,
+    "cpu-features@0.0.10": true,
+    "esbuild@0.28.2": true
+  }
+}

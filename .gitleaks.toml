@@ -1,0 +1,13 @@
+# Gitleaks config for jooservices/vigor3912s-mcp.
+title = "vigor3912s-mcp gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+# Test-only fake credentials used in unit tests / fake server.
+paths = [
+  "src/test/",
+  "tools/fake-drayos.mjs",
+  "tools/e2e_fake_run.mjs",
+]
