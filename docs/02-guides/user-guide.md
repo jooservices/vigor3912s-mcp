@@ -67,7 +67,7 @@ CLI command plus a `confirm_token`:
   "preview": "wan disable WAN3",
   "affects_network": true,
   "dangerous": false,
-  "confirm_token": "a1b2c3d4e5f6..."
+  "confirm_token": "<token-from-preview>"
 }
 ```
 
@@ -75,7 +75,7 @@ CLI command plus a `confirm_token`:
 `confirm_token`. Only then is the command sent to the router.
 
 ```json
-{ "wan": 3, "confirm_token": "a1b2c3d4e5f6..." }
+{ "wan": 3, "confirm_token": "<token-from-preview>" }
 ```
 
 If the write is flagged **dangerous**, the confirm call must also include

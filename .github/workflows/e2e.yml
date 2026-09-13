@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   e2e:
-    name: E2E (fake DrayOS, all tools)
+    name: E2E (simulated DrayOS, all tools)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -37,5 +37,5 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: E2E against fake DrayOS server (all tools, writes included)
+      - name: E2E against simulated DrayOS server (all tools, writes included)
         run: npm run e2e:testing
