@@ -48,7 +48,7 @@ Special values:
 
 For a local deployment against the real router, use `EXPOSE_TOOLS=readonly` so
 the AI surface is monitoring-only. GitHub Actions uses `EXPOSE_TOOLS=all`
-against the fake DrayOS server.
+against the simulated DrayOS server.
 
 ## Output
 

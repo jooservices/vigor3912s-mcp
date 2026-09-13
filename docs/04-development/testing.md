@@ -39,10 +39,10 @@ Safety:
 - Already-verified read tools are skipped via
   `recon-output/e2e-passed.json` (incremental local runs).
 
-The fake server (`tools/fake-drayos.mjs`, ssh2 `Server`) emulates the DrayOS
-interactive shell: password auth, `DrayTek> ` prompt, canned responses generated
-from the registry, and a log of every received command. In GHA it is started by
-the workflow job and targeted via `VIGOR_HOST=127.0.0.1 VIGOR_PORT=<port>`.
+The simulated server (`tools/fake-drayos.mjs`, ssh2 `Server`) emulates the
+DrayOS interactive shell: password auth, `DrayTek> ` prompt, canned responses
+generated from the registry, and a log of every received command. It is started
+by `npm run e2e:testing` and targeted via `.env.testing`.
 
 Real-device verification (all 108 read tools on fw 4.4.7_RC2) remains an
 ad-hoc release gate (`EXPOSE_TOOLS=readonly npm run e2e`).
