@@ -198,15 +198,18 @@ export async function executeWrite(
     if (!intent) {
       throw new ConfirmError('invalid_token', 'confirmation not found or expired');
     }
-    if (code !== confirmPassphrase) {
-      const msg = 'wrong confirmation code';
+    try {
+      gate.verifyUserCode(cid, code, confirmPassphrase ?? '');
+    } catch (e) {
+      const ec = errCode(e) ?? 'bad_user_code';
+      const msg = e instanceof Error ? e.message : 'wrong confirmation code';
       store.request({
         toolId: cmd.id,
         kind: 'write',
         command: commandLog,
         argsJson: argsLog,
         outcome: 'denied',
-        errorCode: 'bad_user_code',
+        errorCode: ec === 'rate_limited' ? 'rate_limited' : 'bad_user_code',
         errorMsg: msg,
         durationMs: Date.now() - started,
       });
@@ -216,10 +219,10 @@ export async function executeWrite(
         command: commandLog,
         status: 'denied',
         success: null,
-        errorCode: 'bad_user_code',
+        errorCode: ec === 'rate_limited' ? 'rate_limited' : 'bad_user_code',
         errorMsg: msg,
       });
-      throw new ConfirmError('invalid_token', msg);
+      throw e;
     }
     try {
       gate.validate(intent.token, command);

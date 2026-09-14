@@ -40,6 +40,25 @@ same LAN as the router.
 - Keep the router firmware updated — see
   `docs/05-3912s-reference/security/` for known CVEs affecting Vigor 3912S.
 
+## Live-router operations
+
+Default `VIGOR_HUMAN_CONFIRM=false` returns a `confirm_token` to the model, so
+an agent can approve its own write. That is intentional for local automation on
+a trusted machine. For a live router with real impact:
+
+- Prefer `EXPOSE_TOOLS=readonly` unless writes are required, and/or
+- Set `VIGOR_HUMAN_CONFIRM=true` with `VIGOR_CONFIRM_PASSPHRASE` so the model
+  never sees the token (human approval via `tools/confirm.mjs`).
+
+## Accepted risks
+
+- **`noControl` on password fields** allows shell metacharacters so real admin
+  passwords are not rejected; control characters (CR/LF) remain blocked.
+  Free-form CLI params still use the stricter `safeText`.
+- **`sys commit` after a confirmed write** is authorized internally without a
+  second confirm token. It only runs inside this process after a successful
+  gated write (or when `skipCommit` is set).
+
 ## Dependency audit
 
 `npm audit` reports one **moderate** dev-only advisory (`GHSA-82fw-gwwq-j7x9`

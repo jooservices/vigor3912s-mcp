@@ -240,10 +240,17 @@ export class LogStore {
     }
   }
 
-  /** Run a read-only SQL query (useful for tests / inspection). */
+  /**
+   * Run a single read-only SELECT (tests / inspection only — not an MCP tool).
+   * Rejects multi-statement SQL and non-SELECT statements.
+   */
   query<T = Record<string, unknown>>(sql: string, ...params: SQLInputValue[]): T {
     if (!this.db) throw new Error('log store is not available');
-    const stmt = this.db.prepare(sql);
+    const trimmed = sql.trim();
+    if (!/^SELECT\b/i.test(trimmed) || /;/.test(trimmed)) {
+      throw new Error('LogStore.query only allows a single SELECT statement');
+    }
+    const stmt = this.db.prepare(trimmed);
     const rows = stmt.all(...params) as unknown;
     return rows as T;
   }

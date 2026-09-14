@@ -1,8 +1,13 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export type ConfirmErrorCode = 'invalid_token' | 'token_used' | 'token_expired' | 'mismatch';
+export type ConfirmErrorCode =
+  | 'invalid_token'
+  | 'token_used'
+  | 'token_expired'
+  | 'mismatch'
+  | 'rate_limited';
 
 export class ConfirmError extends Error {
   readonly code: ConfirmErrorCode;
@@ -47,11 +52,15 @@ export class ConfirmGate {
   private intents = new Map<string, WriteIntent>();
   /** tokens that were already consumed (kept until their expiry for audit). */
   private used = new Map<string, number>();
+  /** Wrong human-confirm passphrase attempts keyed by confirmationId. */
+  private codeFailures = new Map<string, { count: number; lockedUntil: number }>();
 
   constructor(
     private readonly ttlMs = 60000,
     private readonly maxPending = 100,
     private readonly pendingFile?: string,
+    private readonly maxCodeFailures = 5,
+    private readonly codeLockMs = 60_000,
   ) {}
 
   create(toolId: string, command: string): { token: string; confirmationId: string } {
@@ -63,9 +72,10 @@ export class ConfirmGate {
       );
     }
     const token = randomBytes(16).toString('hex');
-    let confirmationId = randomBytes(3).toString('hex');
+    // 8 bytes → 16 hex chars (was 3 bytes / 6 hex).
+    let confirmationId = randomBytes(8).toString('hex');
     while (this.getByConfirmationId(confirmationId) !== undefined) {
-      confirmationId = randomBytes(3).toString('hex');
+      confirmationId = randomBytes(8).toString('hex');
     }
     const now = Date.now();
     this.intents.set(token, {
@@ -114,6 +124,45 @@ export class ConfirmGate {
       if (intent.confirmationId === id) return intent;
     }
     return undefined;
+  }
+
+  /**
+   * Timing-safe passphrase check with per-confirmationId rate limiting.
+   * Throws ConfirmError on mismatch / lockout; clears failures on success.
+   */
+  verifyUserCode(confirmationId: string, provided: string, expected: string): void {
+    const now = Date.now();
+    const state = this.codeFailures.get(confirmationId) ?? { count: 0, lockedUntil: 0 };
+    if (now < state.lockedUntil) {
+      throw new ConfirmError(
+        'rate_limited',
+        'too many wrong confirmation codes; try again later',
+      );
+    }
+    const a = Buffer.from(provided);
+    const b = Buffer.from(expected);
+    let ok = false;
+    if (a.length === b.length) {
+      ok = timingSafeEqual(a, b);
+    } else if (a.length > 0) {
+      // Equal-time-ish reject when lengths differ (avoid leaking via early return only).
+      timingSafeEqual(a, a);
+    }
+    if (!ok) {
+      state.count += 1;
+      if (state.count >= this.maxCodeFailures) {
+        state.lockedUntil = now + this.codeLockMs;
+        state.count = 0;
+        this.codeFailures.set(confirmationId, state);
+        throw new ConfirmError(
+          'rate_limited',
+          'too many wrong confirmation codes; try again later',
+        );
+      }
+      this.codeFailures.set(confirmationId, state);
+      throw new ConfirmError('invalid_token', 'wrong confirmation code');
+    }
+    this.codeFailures.delete(confirmationId);
   }
 
   /** Pending intents without tokens (for the human-confirm CLI). */
