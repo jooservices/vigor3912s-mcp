@@ -73,7 +73,7 @@ function registerRead(
         respondedAt: iso(ended),
         ...timingOf(client),
       });
-      const formatted = cmd.format ? cmd.format(raw) : raw;
+      const formatted = cmd.format ? cmd.format(raw, args) : raw;
       if (typeof formatted === 'string' && outputLimit > 0 && formatted.length > outputLimit) {
         const truncated = `${formatted.slice(0, outputLimit)}\n...[truncated]`;
         return { content: [{ type: 'text' as const, text: text({ output: truncated, truncated: true }) }] };

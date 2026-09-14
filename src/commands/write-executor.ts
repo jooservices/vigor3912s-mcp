@@ -20,6 +20,13 @@ function errCode(e: unknown): string | undefined {
   return e instanceof Error && 'code' in e ? String((e as { code: unknown }).code) : undefined;
 }
 
+/** Map ConfirmGate error codes onto write_audit status values. */
+function auditDenyStatus(code: string): 'expired' | 'mismatch' | 'denied' {
+  if (code === 'token_expired' || code === 'expired') return 'expired';
+  if (code === 'mismatch') return 'mismatch';
+  return 'denied';
+}
+
 async function snapshot(client: VigorClient, snapshotRead: string | undefined): Promise<string | null> {
   if (!snapshotRead) return null;
   const cmd = findCommand(snapshotRead);
@@ -232,7 +239,7 @@ export async function executeWrite(
         requestId: null,
         toolId: cmd.id,
         command: commandLog,
-        status: ec === 'expired' ? 'expired' : 'denied',
+        status: auditDenyStatus(ec),
         success: null,
         errorCode: ec,
         errorMsg: e instanceof Error ? e.message : String(e),
@@ -260,10 +267,7 @@ export async function executeWrite(
         requestId: null,
         toolId: cmd.id,
         command: commandLog,
-        status: (['expired', 'mismatch'].includes(denyCode) ? denyCode : 'denied') as
-          | 'expired'
-          | 'mismatch'
-          | 'denied',
+        status: auditDenyStatus(denyCode),
         success: null,
         errorCode: denyCode,
         errorMsg: e instanceof Error ? e.message : String(e),

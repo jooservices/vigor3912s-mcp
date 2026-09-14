@@ -7,11 +7,15 @@ export const ipv4 = z.string().ip({ version: 'v4' });
 export const ipv6 = z.string().ip({ version: 'v6' });
 
 /**
- * LAN/WAN netmask as a dotted quad. Same wire shape as IPv4, but rejects
- * injection payloads that the old `/^255\./` regex accepted (newlines, `;`,
- * trailing CLI tokens).
+ * LAN/WAN netmask as a dotted quad. Same wire shape as IPv4, rejects injection
+ * payloads, and requires contiguous 1-bits (e.g. 255.255.255.0, not 255.0.255.0).
  */
-export const ipv4Mask = ipv4;
+export const ipv4Mask = ipv4.refine((value) => {
+  const mask =
+    value.split('.').reduce((result, octet) => ((result << 8) | Number(octet)) >>> 0, 0) >>> 0;
+  // Contiguous 1-bits then 0-bits (unsigned 32-bit).
+  return mask === 0 || ((mask | (mask - 1)) >>> 0) === 0xffffffff;
+}, 'expected a contiguous IPv4 netmask');
 
 export const wanIdx = z.number().int().min(1).max(12);
 export const onOff = z.enum(['on', 'off']);

@@ -6,7 +6,7 @@ export const R = (
   family: string,
   cli: string,
   desc: string,
-  format?: (raw: string) => unknown,
+  format?: CommandDef['format'],
 ): CommandDef => ({
   id,
   family,
@@ -23,7 +23,7 @@ export const Ra = (
   render: CommandDef['render'],
   args: ZodRawShape,
   desc: string,
-  format?: (raw: string) => unknown,
+  format?: CommandDef['format'],
 ): CommandDef => ({
   id,
   family,

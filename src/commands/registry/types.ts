@@ -14,7 +14,7 @@ export interface CommandDef {
   /** Whether this command changes network-affecting state (extra warning). */
   affectsNetwork?: boolean;
   /** Optional formatter to structure the raw CLI output (falls back to raw). */
-  format?: (raw: string) => unknown;
+  format?: (raw: string, args: Record<string, unknown>) => unknown;
   /** Read command id used to snapshot router state before/after this write. */
   snapshotRead?: string;
   /** Arg keys whose values must be redacted in logs (passwords, secrets). */

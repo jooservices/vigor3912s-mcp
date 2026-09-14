@@ -25,6 +25,12 @@ describe('ipv4 / ipv4Mask', () => {
       expect(ipv4Mask.safeParse(bad).success, bad).toBe(false);
     }
   });
+
+  it('rejects non-contiguous netmask bit patterns', () => {
+    expect(ipv4Mask.safeParse('255.0.255.0').success).toBe(false);
+    expect(ipv4Mask.safeParse('255.255.0.255').success).toBe(false);
+    expect(ipv4Mask.safeParse('255.255.255.128').success).toBe(true);
+  });
 });
 
 describe('ipv6', () => {

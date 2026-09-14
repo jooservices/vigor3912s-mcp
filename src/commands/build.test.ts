@@ -81,6 +81,19 @@ describe('registry -> MCP tool generation', () => {
     await server.close();
   });
 
+  it('passes validated args into formatters (ip_ping target)', async () => {
+    FakeClient.script = {
+      '': '',
+      'ip ping 8.8.8.8': 'Packets: Sent = 5, Received = 5, Lost = 0 (0% loss)',
+    };
+    const { mcp, server } = await startServer();
+    const res = await mcp.callTool({ name: 'ip_ping', arguments: { host: '8.8.8.8' } });
+    const body = JSON.parse(textOf(res));
+    expect(body.target).toBe('8.8.8.8');
+    expect(body.sent).toBe(5);
+    await server.close();
+  });
+
   it('write tool preview does NOT send anything to the router', async () => {
     FakeClient.script = { '': '' };
     const { mcp, server } = await startServer();
