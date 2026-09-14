@@ -2,17 +2,19 @@
 
 ## Unit tests (mocked shell)
 
-`npm test` — 50 tests across:
+`npm test` — unit tests across:
 
 - `src/tools/parsers.test.ts` — output parsers against real captured fixtures.
-- `src/ssh/driver.test.ts` — allowlist, blocklist, write gate, timeout, stream
-  close, reconnect, **mutex serialization**, read-only mode, pager.
-- `src/tools/confirm-gate.test.ts` — token lifecycle (single-use, expiry,
-  mismatch, intent cap, prune).
-- `src/db/log.test.ts` — SQLite logging + redaction.
+- `src/ssh/driver.test.ts` — allowlist, blocklist, host-key pin, write gate,
+  timeout, stream close, reconnect, **mutex serialization**, pager.
+- `src/ssh/host-key.test.ts` — fingerprint formatting / matching.
+- `src/tools/confirm-gate.test.ts` — token lifecycle, passphrase rate limit.
+- `src/db/log.test.ts` — SQLite logging, redaction, SELECT-only `query`.
+- `src/commands/validators.test.ts` / `write-policy.test.ts` /
+  `read-allowlist.test.ts` — shared schemas, policy merge, allowlist.
 - `src/commands/build.test.ts` — registry→MCP flow via in-memory transport:
-  registration completeness, read calls, write preview/confirm, dangerous
-  acknowledge, auto-commit, tool filters, output cap, injection rejection.
+  registration, read/write confirm, dangerous acknowledge, auto-commit,
+  filters, output cap, injection rejection.
 
 The mocked router (`src/test/fake-ssh2.ts`) script-cans responses per command
 and can simulate a router that never answers or drops the session.
