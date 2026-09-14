@@ -27,6 +27,8 @@ project directory via `dotenv`).
 | --- | --- | --- |
 | `VIGOR_READ_ONLY` | `false` | `true` = write tools are **not registered** (monitoring only) |
 | `VIGOR_AUTO_COMMIT` | `true` | Run `sys commit` after a successful confirmed write (skipped for `skipCommit` commands) |
+| `VIGOR_HUMAN_CONFIRM` | `false` | `true` = every write requires a human: the confirm token is hidden and the human must provide the confirmation code |
+| `VIGOR_CONFIRM_PASSPHRASE` | *(unset)* | The confirmation code the human types to approve a write (required when `VIGOR_HUMAN_CONFIRM=true`, min 8 chars) |
 
 ## Tool exposure (`EXPOSE_TOOLS`)
 
@@ -68,6 +70,8 @@ VIGOR_LOG_DB=data/vigor3912s.db
 EXPOSE_TOOLS=readonly
 # VIGOR_READ_ONLY=true
 # VIGOR_AUTO_COMMIT=true
+# VIGOR_HUMAN_CONFIRM=false
+# VIGOR_CONFIRM_PASSPHRASE=change-me-strong-code
 # VIGOR_DISABLED_TOOLS=sys_reboot,testmail_send
 # VIGOR_TOOL_OUTPUT_LIMIT=16000
 ```

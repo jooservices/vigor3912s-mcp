@@ -44,14 +44,18 @@ working directory = project dir. Tool ids match `docs/03-reference/commands.md`.
 
 Two calls, same tool:
 
-1. **Preview** — call without `confirm_token`. Returns:
-   `{ status: "needs_confirmation", preview, affects_network, dangerous, confirm_token, ... }`.
-2. **Confirm** — call again with the same args + `confirm_token` (+
-   `acknowledge: true` for dangerous). The server validates the token (single
-   use, 60s, exact-command bound) and executes.
+1. **Preview** — call without a confirmation. Returns a preview + a `message`
+   to present to the human, plus either:
+   - `confirm_token` (default), or
+   - `confirmation_id` when `VIGOR_HUMAN_CONFIRM=true` (token hidden).
+2. **Confirm** — call again with the same args and:
+   - `confirm_token` (default), **or**
+   - `confirmation_id` + `user_code` (human-confirm mode; `user_code` must
+     equal `VIGOR_CONFIRM_PASSPHRASE`).
 
-Tokens are opaque hex strings; a model should present them to the user and only
-proceed after explicit user confirmation.
+Tokens are single-use and expire after 60s. In human-confirm mode the model
+cannot complete a write on its own — the human must provide the confirmation
+code. Dangerous writes additionally require `acknowledge: true`.
 
 ## Read-only / exposure control
 
