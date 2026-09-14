@@ -13,6 +13,9 @@ same LAN as the router.
 
 ## Safety guarantees
 
+- **SSH host-key pinning**: `VIGOR_SSH_HOST_FINGERPRINT` is required unless
+  `VIGOR_SSH_INSECURE_SKIP_VERIFY=true` is set explicitly (tests / simulated
+  DrayOS only). Mismatched keys abort before password auth completes.
 - **Read-only by default at the driver**: `runCommand()` only allows registry
   read commands; everything else is refused before reaching the router.
 - **Writes require explicit confirmation**: single-use, 60s token bound to the
@@ -61,6 +64,5 @@ a trusted machine. For a live router with real impact:
 
 ## Dependency audit
 
-`npm audit` reports one **moderate** dev-only advisory (`GHSA-82fw-gwwq-j7x9`
-via `@vitest/mocker`). It affects the test runner only, never the router or the
-MCP data path. Triage before any public CI hardening.
+Run `npm audit` regularly. Dev-only advisories in the test runner must not be
+ignored indefinitely; upgrade when a compatible fixed release is available.

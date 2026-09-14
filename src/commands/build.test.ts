@@ -24,6 +24,7 @@ function cfg(overrides: Record<string, unknown> = {}) {
     exposeTools: [],
     disabledTools: [],
     toolOutputLimit: 16000,
+    sshInsecureSkipHostVerify: true,
     ...overrides,
   };
 }

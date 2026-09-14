@@ -8,11 +8,21 @@ import {
   type VigorClient,
   type VigorErrorCode,
 } from './client.js';
+import { fingerprintSha256, hostKeyMatches } from './host-key.js';
 
 export { VigorCommandError } from './client.js';
 export type { CommandTiming, RunCommandOptions, VigorErrorCode } from './client.js';
 
-type DriverConfig = Pick<VigorConfig, 'host' | 'port' | 'username' | 'password' | 'readOnly'>;
+type DriverConfig = Pick<
+  VigorConfig,
+  | 'host'
+  | 'port'
+  | 'username'
+  | 'password'
+  | 'readOnly'
+  | 'sshHostFingerprint'
+  | 'sshInsecureSkipHostVerify'
+>;
 
 interface Waiter {
   stream: ClientChannel;
@@ -156,14 +166,31 @@ export class SshVigorClient implements VigorClient {
         });
       });
 
-      ssh.connect({
+      const connectOpts: Parameters<Client['connect']>[0] = {
         host: this.cfg.host,
         port: this.cfg.port,
         username: this.cfg.username,
         password: this.cfg.password,
         readyTimeout: 20000,
-      });
+      };
+      if (!this.cfg.sshInsecureSkipHostVerify) {
+        const expected = this.cfg.sshHostFingerprint;
+        if (!expected) {
+          fail(
+            'connect',
+            'SSH host-key fingerprint is not configured (set VIGOR_SSH_HOST_FINGERPRINT)',
+          );
+          return;
+        }
+        connectOpts.hostVerifier = (key: Buffer): boolean => hostKeyMatches(expected, key);
+      }
+      ssh.connect(connectOpts);
     });
+  }
+
+  /** Compute OpenSSH SHA256 fingerprint for an observed host key (ops helper). */
+  static hostFingerprint(hostKey: Buffer): string {
+    return fingerprintSha256(hostKey);
   }
 
   /** Run one CLI command and return its cleaned output. READ-ONLY: the command
