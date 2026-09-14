@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readCommands, writeCommands } from './registry.js';
+import { readCommands, writeCommands } from './registry/index.js';
 import { buildServer } from '../index.js';
 import { FakeClient } from '../test/fake-ssh2.js';
 

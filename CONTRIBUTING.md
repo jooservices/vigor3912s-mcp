@@ -29,7 +29,7 @@ This project controls a **live network router**. Safety is the top priority:
 
 ## Adding a command
 
-Edit `src/commands/registry.ts`:
+Edit the matching file under `src/commands/registry/families/`:
 
 - Classify `read` vs `write` accurately.
 - Validate args with zod; use `noControl()` / `safeText()` for free-form text.

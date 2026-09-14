@@ -4,6 +4,7 @@ coverage/
 .env
 *.log
 .DS_Store
+pending-confirms.json
 recon-output/
 data/
 *.db

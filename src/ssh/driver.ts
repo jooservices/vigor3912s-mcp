@@ -1,5 +1,5 @@
 import { Client, type ClientChannel } from 'ssh2';
-import { readCommands } from '../commands/registry.js';
+import { isAllowedReadCommand } from '../commands/read-allowlist.js';
 import type { VigorConfig } from '../config.js';
 import {
   type CommandTiming,
@@ -33,33 +33,6 @@ const MORE_RE = /---\s*MORE\s*---/;
 const ECHO_STRIP = /^\s*(?:>|#)\s*/;
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_MAX_PAGES = 60;
-
-/**
- * READ allowlist, derived from the command registry. Only commands registered
- * as `read` (view/status/display) are permitted via runCommand(); anything else
- * is rejected before it reaches the router. `exit` is used by disconnect();
- * '' is the banner wait. Write commands never travel through runCommand() —
- * they require runWriteCommand() after an explicit confirmation.
- */
-const READ_EXACT = new Set<string>(
-  readCommands()
-    .filter((c) => Object.keys(c.args).length === 0)
-    .map((c) => c.render({})),
-);
-READ_EXACT.add('');
-READ_EXACT.add('exit');
-
-const PING_RE = /^ip ping \d{1,3}(?:\.\d{1,3}){3}$/;
-const TRACERT_RE = /^ip tracert \d{1,3}(?:\.\d{1,3}){3}$/;
-const IP6_PING_RE = /^ip6 (?:ping|tracert) [0-9a-fA-F:._%]+$/;
-
-function isAllowedRead(command: string): boolean {
-  if (READ_EXACT.has(command)) return true;
-  if (PING_RE.test(command)) return true;
-  if (TRACERT_RE.test(command)) return true;
-  if (IP6_PING_RE.test(command)) return true;
-  return false;
-}
 
 /**
  * HARD blocklist: commands that must never be executed, regardless of the
@@ -196,7 +169,7 @@ export class SshVigorClient implements VigorClient {
    *  the router. Commands are serialized (mutex) so concurrent calls never
    *  interleave on the shared shell. */
   async runCommand(command: string, opts: RunCommandOptions = {}): Promise<string> {
-    if (!isAllowedRead(command)) {
+    if (!isAllowedReadCommand(command)) {
       throw new VigorCommandError(
         'invalid',
         `command is not a registered read command and was refused: ${command}`,
