@@ -9,5 +9,7 @@ useDefault = true
 paths = [
   "src/test/",
   "tools/fake-drayos.mjs",
-  "tools/e2e_fake_run.mjs",
+  "tools/e2e_testing_run.mjs",
+  "docs/02-guides/user-guide.md",
+  ".env.testing",
 ]

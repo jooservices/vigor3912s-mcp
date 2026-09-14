@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SshVigorClient, VigorCommandError } from './driver.js';
+import { fingerprintSha256 } from './host-key.js';
 
 /**
  * Fake ssh2: a scripted router shell that echoes each command, returns canned
@@ -62,13 +63,21 @@ const fake = vi.hoisted(() => {
     static instances: FakeClient[] = [];
     static script: Record<string, string | string[]> = {};
     static delayMs = 0;
+    /** Host key presented to hostVerifier (overridable in tests). */
+    static hostKey = Buffer.from('vigor-test-host-key');
     private stream: FakeStream | null = null;
     constructor() {
       super();
       FakeClient.instances.push(this);
     }
-    connect(): void {
-      setImmediate(() => this.emit('ready'));
+    connect(cfg?: { hostVerifier?: (key: Buffer) => boolean }): void {
+      setImmediate(() => {
+        if (cfg?.hostVerifier && !cfg.hostVerifier(FakeClient.hostKey)) {
+          this.emit('error', new Error('Host key verification failed'));
+          return;
+        }
+        this.emit('ready');
+      });
     }
     shell(_opts: unknown, cb: (err: Error | undefined, stream: unknown) => void): void {
       this.stream = new FakeStream(FakeClient.script, FakeClient.delayMs);
@@ -120,6 +129,7 @@ function cfg(overrides: Record<string, unknown> = {}) {
     username: 'admin',
     password: 'secret',
     readOnly: false,
+    sshInsecureSkipHostVerify: true,
     ...overrides,
   };
 }
@@ -165,6 +175,28 @@ describe('VigorClient read-only allowlist (STRICT, no exceptions)', () => {
   });
 });
 
+describe('VigorClient SSH host-key verification', () => {
+  it('connects when the pinned fingerprint matches the host key', async () => {
+    fake.FakeClient.script = { '': '', 'sys version': 'Router Model: Vigor3912S' };
+    const fp = fingerprintSha256(fake.FakeClient.hostKey);
+    const client = new SshVigorClient(
+      cfg({ sshInsecureSkipHostVerify: false, sshHostFingerprint: fp }),
+    );
+    await expect(client.runCommand('sys version')).resolves.toContain('Vigor3912S');
+  });
+
+  it('refuses connect when the host key does not match the pin', async () => {
+    fake.FakeClient.script = { '': '', 'sys version': 'ok' };
+    const client = new SshVigorClient(
+      cfg({
+        sshInsecureSkipHostVerify: false,
+        sshHostFingerprint: 'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      }),
+    );
+    await expect(client.runCommand('sys version')).rejects.toMatchObject({ code: 'connect' });
+  });
+});
+
 describe('VigorClient write path (confirm-gated)', () => {
   it('refuses a write command via runCommand (not a read command)', async () => {
     const client = new SshVigorClient(cfg());
@@ -188,6 +220,17 @@ describe('VigorClient write path (confirm-gated)', () => {
     await expect(client.runWriteCommand('wan disable WAN1')).rejects.toMatchObject({
       code: 'unauthorized',
     });
+  });
+
+  it('strips the echoed write command from returned output (cleanOutput)', async () => {
+    const command = 'sys passwd old-secret new-secret';
+    fake.FakeClient.script = { '': '', [command]: 'Password changed' };
+    const client = new SshVigorClient(cfg());
+    client.authorizeWrite(command);
+    const out = await client.runWriteCommand(command);
+    expect(out).toContain('Password changed');
+    expect(out).not.toContain('old-secret');
+    expect(out).not.toContain(command);
   });
 
   it('authorizing one command does not authorize a different write', async () => {

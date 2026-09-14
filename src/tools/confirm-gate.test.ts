@@ -51,4 +51,27 @@ describe('ConfirmGate', () => {
     gate.create('sys_commit', 'sys commit'); // create triggers prune
     expect(gate.size).toBe(1);
   });
+
+  it('issues a longer confirmationId (16 hex chars)', () => {
+    const gate = new ConfirmGate();
+    const { confirmationId } = gate.create('wan_disable', 'wan disable WAN1');
+    expect(confirmationId).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it('verifies user codes timing-safely and rate-limits failures', () => {
+    const gate = new ConfirmGate(60_000, 100, undefined, 3, 60_000);
+    const { confirmationId } = gate.create('wan_disable', 'wan disable WAN1');
+    expect(() => gate.verifyUserCode(confirmationId, 'secret-passphrase', 'secret-passphrase')).not.toThrow();
+
+    const { confirmationId: id2 } = gate.create('wan_disable', 'wan disable WAN2');
+    expect(() => gate.verifyUserCode(id2, 'wrong', 'secret-passphrase')).toThrow(
+      expect.objectContaining({ code: 'invalid_token' }),
+    );
+    expect(() => gate.verifyUserCode(id2, 'wrong', 'secret-passphrase')).toThrow(
+      expect.objectContaining({ code: 'invalid_token' }),
+    );
+    expect(() => gate.verifyUserCode(id2, 'wrong', 'secret-passphrase')).toThrow(
+      expect.objectContaining({ code: 'rate_limited' }),
+    );
+  });
 });

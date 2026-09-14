@@ -9,7 +9,7 @@ MCP server (src/index.ts)
   ▼
 Tool layer (src/commands/build.ts)
   │  read tools → client.runCommand()
-  │  write tools → preview/confirm → client.runWriteCommand()
+  │  write tools → executeWrite() (confirm → snapshot → run → commit → audit)
   ▼
 VigorClient interface (src/ssh/client.ts)
   │  implement by SshVigorClient (ssh2) — or a future 3912S SDK
@@ -19,18 +19,18 @@ SSH interactive shell → DrayOS CLI (prompt `DrayTek> `, pager `--- MORE ---`)
 
 ## Command registry → tools
 
-`src/commands/registry.ts` is the **single source of truth**: 217 commands
-across 42 families. Each entry declares kind (`read` | `write`), args (zod),
-safety flags (`dangerous`, `affectsNetwork`, `skipCommit`, `secretArgs`), and an
-optional snapshot read + output formatter.
+`src/commands/registry/` is the **CLI catalog** (217 commands / 42 families):
+kind, zod args, render, optional output formatter. Safety metadata lives in
+`src/commands/write-policy.ts` and is merged by `allCommands()`.
 
-`src/commands/build.ts` generates one MCP tool per registry entry:
+`src/commands/build.ts` registers one MCP tool per entry; write orchestration
+is in `src/commands/write-executor.ts`:
 
 - **Read tools** run the (verified) read command and return its output
-  (structured when a parser exists).
-- **Write tools** are two-step: first call returns a preview + `confirm_token`;
-  the confirm call (same args + token) executes. Dangerous writes also require
-  `acknowledge: true`.
+  (structured when a parser exists; formatters receive args).
+- **Write tools** are two-step: first call returns a preview + `confirm_token`
+  (or `confirmation_id` in human-confirm mode); the confirm call executes.
+  Dangerous writes also require `acknowledge: true`.
 
 ## Client interface (SDK-ready)
 
@@ -54,23 +54,24 @@ replace it by implementing the same interface and swapping one line in
 
 ## Safety layers (in depth)
 
-1. **Read allowlist** — `runCommand()` only permits registry read commands
-   (derived `READ_EXACT` + `ip ping`/`ip tracert`/`ip6 ping`/`ip6 tracert`
-   regexes). Anything else is refused before touching the router.
-2. **Confirm gate** (`src/tools/confirm-gate.ts`) — single-use, 60s token bound
-   to the exact rendered command; `expired`/`mismatch`/`used`/`invalid` are all
-   rejected; pending intents are capped.
-3. **Write authorization** — `runWriteCommand()` executes only a command
+1. **SSH host-key pin** — `VIGOR_SSH_HOST_FINGERPRINT` verified on connect
+   unless `VIGOR_SSH_INSECURE_SKIP_VERIFY=true`.
+2. **Read allowlist** — `runCommand()` uses `isAllowedReadCommand()` from
+   `src/commands/read-allowlist.ts` (registry + Zod host schemas). Anything
+   else is refused before touching the router.
+3. **Confirm gate** (`src/tools/confirm-gate.ts`) — single-use, 60s token bound
+   to the exact rendered command; human-confirm supports timing-safe passphrase
+   checks with rate limiting.
+4. **Write authorization** — `runWriteCommand()` executes only a command
    previously `authorizeWrite()`d (single-shot); refused in read-only mode.
-4. **Hard blocklist** — `sys cfg default`, `sys halt`, `mngt rmtcfg enable`,
+5. **Hard blocklist** — `sys cfg default`, `sys halt`, `mngt rmtcfg enable`,
    `linux clean *` are refused even if the registry ever maps to them.
-5. **Command mutex** — every command is serialized through a promise chain so
+6. **Command mutex** — every command is serialized through a promise chain so
    concurrent tool calls never interleave on the shared shell.
-6. **Injection guards** — `noControl()` / `safeText()` zod validators reject
-   control characters and shell metacharacters in free-form args.
-7. **Auto-commit** — after a successful confirmed write, `sys commit` persists
+7. **Injection guards** — shared validators in `src/commands/validators.ts`.
+8. **Auto-commit** — after a successful confirmed write, `sys commit` persists
    the change (unless `skipCommit`), and the outcome is logged.
-8. **Dangerous writes** — flagged commands require `acknowledge: true`.
+9. **Dangerous writes** — policy-flagged commands require `acknowledge: true`.
 
 ## Logging (SQLite)
 

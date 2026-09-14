@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { readCommands } from './commands/registry.js';
+import { readCommands } from './commands/registry/index.js';
 
 export const configSchema = z.object({
   host: z.string().min(1).default('192.168.1.1'),
@@ -12,6 +12,15 @@ export const configSchema = z.object({
   /** After a successful confirmed write, run `sys commit` to persist. */
   autoCommit: z.boolean().default(true),
   /**
+   * When true, EVERY write tool requires a human-in-the-loop confirmation:
+   * the confirm token is hidden from the model, and the confirm call must
+   * include `confirmation_id` + `user_code` where `user_code` equals
+   * `VIGOR_CONFIRM_PASSPHRASE`. Default off — tokens are returned as before.
+   */
+  humanConfirm: z.boolean().default(false),
+  /** Secret key the human types to approve a write in human-confirm mode. */
+  confirmPassphrase: z.string().min(8).optional(),
+  /**
    * Whitelist of tool ids exposed to the AI. Special values:
    * - 'readonly' → only read tools
    * - 'all' (or empty) → every tool
@@ -22,6 +31,16 @@ export const configSchema = z.object({
   disabledTools: z.array(z.string()).default([]),
   /** Max characters returned by a read tool before truncation (0 = no cap). */
   toolOutputLimit: z.number().int().min(0).default(16000),
+  /**
+   * Expected SSH host-key fingerprint (OpenSSH `SHA256:…` or 64-char hex).
+   * Required unless `sshInsecureSkipHostVerify` is true.
+   */
+  sshHostFingerprint: z.string().min(1).optional(),
+  /**
+   * Explicit opt-out of host-key verification (tests / simulated DrayOS only).
+   * Never enable against a live router on an untrusted LAN.
+   */
+  sshInsecureSkipHostVerify: z.boolean().default(false),
 });
 
 export type VigorConfig = z.infer<typeof configSchema>;
@@ -56,16 +75,30 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): VigorConfig {
     logDb: env.VIGOR_LOG_DB,
     readOnly: truthy(env.VIGOR_READ_ONLY),
     autoCommit: env.VIGOR_AUTO_COMMIT === undefined ? true : truthy(env.VIGOR_AUTO_COMMIT),
+    humanConfirm: truthy(env.VIGOR_HUMAN_CONFIRM),
+    confirmPassphrase: env.VIGOR_CONFIRM_PASSPHRASE,
     exposeTools: resolveExposeTools(env.EXPOSE_TOOLS),
     disabledTools: list(env.VIGOR_DISABLED_TOOLS),
     toolOutputLimit:
       env.VIGOR_TOOL_OUTPUT_LIMIT !== undefined
         ? Number(env.VIGOR_TOOL_OUTPUT_LIMIT)
         : 16000,
+    sshHostFingerprint: env.VIGOR_SSH_HOST_FINGERPRINT,
+    sshInsecureSkipHostVerify: truthy(env.VIGOR_SSH_INSECURE_SKIP_VERIFY),
   };
   const parsed = configSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`Invalid VIGOR_* / EXPOSE_TOOLS environment config: ${parsed.error.message}`);
   }
-  return parsed.data;
+  const config = parsed.data;
+  if (config.humanConfirm && !config.confirmPassphrase) {
+    throw new Error('VIGOR_HUMAN_CONFIRM=true requires VIGOR_CONFIRM_PASSPHRASE to be set');
+  }
+  if (!config.sshHostFingerprint && !config.sshInsecureSkipHostVerify) {
+    throw new Error(
+      'SSH host-key verification required: set VIGOR_SSH_HOST_FINGERPRINT (preferred) ' +
+        'or explicitly VIGOR_SSH_INSECURE_SKIP_VERIFY=true for tests/simulated servers only',
+    );
+  }
+  return config;
 }

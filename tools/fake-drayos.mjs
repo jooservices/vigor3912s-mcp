@@ -19,7 +19,7 @@
  */
 import { generateKeyPairSync } from 'node:crypto';
 import ssh2 from 'ssh2';
-import { readCommands, writeCommands } from '../dist/commands/registry.js';
+import { readCommands, writeCommands } from '../dist/commands/registry/index.js';
 
 const { Server } = ssh2;
 

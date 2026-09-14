@@ -1,7 +1,7 @@
 # Command registry
 
 Every command in the registry becomes an MCP tool. Generated from
-`src/commands/registry.ts` — do not edit by hand; run
+`src/commands/registry/` — do not edit generated docs by hand; run
 `node tools/gen-commands.mjs`.
 
 **Totals:** 217 commands · 108 read · 109 write · 42 families
@@ -94,7 +94,7 @@ Every command in the registry becomes an MCP tool. Generated from
 | `sys_commit` | write | sys |  |  | - | - | - | yes |
 | `sys_reboot` | write | sys | yes | yes | - | - | - | yes |
 | `sys_autoreboot` | write | sys |  |  | mode, hours | - | - |  |
-| `sys_tftpd` | write | sys |  |  | onoff | - | - |  |
+| `sys_tftpd` | write | sys | yes |  | onoff | - | - |  |
 | `sys_syslog` | write | sys |  |  | onoff | - | - |  |
 | `sys_mailalert` | write | sys |  |  | onoff | - | - |  |
 | `sys_webhook` | write | sys |  |  | onoff | - | - |  |
@@ -123,7 +123,7 @@ Every command in the registry becomes an MCP tool. Generated from
 | `dhcp_dns1` | write | srv |  |  | lan, dns | - | - |  |
 | `dhcp_dns2` | write | srv |  |  | lan, dns | - | - |  |
 | `dhcp_leasetime` | write | srv |  |  | lan, seconds | - | - |  |
-| `nat_dmz` | write | srv |  | yes | lan, host | - | - |  |
+| `nat_dmz` | write | srv | yes | yes | lan, host | show_dmz | - |  |
 | `ip_route_status` | read | ip |  |  | - | - | - |  |
 | `ip_arp_status` | read | ip |  |  | - | - | - |  |
 | `ip_ping` | read | ip |  |  | host | - | - |  |
@@ -131,25 +131,25 @@ Every command in the registry becomes an MCP tool. Generated from
 | `ip_session` | read | ip |  |  | - | - | - |  |
 | `ip_dnsforward` | read | ip |  |  | - | - | - |  |
 | `ip_lanDNSRes` | read | ip |  |  | - | - | - |  |
-| `ip_addr` | write | ip |  | yes | lan, ip | - | - |  |
-| `ip_nmask` | write | ip |  | yes | lan, mask | - | - |  |
+| `ip_addr` | write | ip | yes | yes | lan, ip | show_lan | - |  |
+| `ip_nmask` | write | ip | yes | yes | lan, mask | show_lan | - |  |
 | `ip_route_add` | write | ip |  | yes | dest, mask, gw | ip_route_status | - |  |
 | `ip_route_del` | write | ip |  | yes | dest, mask | ip_route_status | - |  |
 | `ip_bindmac` | write | ip |  |  | ip, mac | - | - |  |
 | `mngt_sshport` | write | mngt | yes |  | port | - | - |  |
-| `mngt_telnetport` | write | mngt |  |  | port | - | - |  |
-| `mngt_httpport` | write | mngt |  |  | port | - | - |  |
-| `mngt_httpsport` | write | mngt |  |  | port | - | - |  |
+| `mngt_telnetport` | write | mngt | yes |  | port | - | - |  |
+| `mngt_httpport` | write | mngt | yes |  | port | - | - |  |
+| `mngt_httpsport` | write | mngt | yes |  | port | - | - |  |
 | `mngt_sshtimeout` | write | mngt |  |  | minutes | - | - |  |
 | `mngt_telnettimeout` | write | mngt |  |  | minutes | - | - |  |
 | `mngt_noping` | write | mngt |  |  | onoff | - | - |  |
 | `mngt_defenseworm` | write | mngt |  |  | onoff | - | - |  |
-| `mngt_bfp` | write | mngt |  |  | onoff | - | - |  |
+| `mngt_bfp` | write | mngt | yes |  | onoff | - | - |  |
 | `linux_status` | read | linux |  |  | - | - | - |  |
 | `linux_ssh_enable` | write | linux |  |  | - | - | - |  |
 | `linux_ssh_disable` | write | linux |  |  | - | - | - |  |
 | `linux_ssh_port` | write | linux |  |  | port | - | - |  |
-| `linux_setlinuxip` | write | linux |  | yes | ip, cidr, gateway | - | - |  |
+| `linux_setlinuxip` | write | linux | yes | yes | ip, cidr, gateway | - | - |  |
 | `port_status` | read | port |  |  | - | - | - |  |
 | `port_sniff_status` | read | port |  |  | - | - | - |  |
 | `port_speed` | write | port |  | yes | port, speed | - | - |  |
@@ -158,13 +158,13 @@ Every command in the registry becomes an MCP tool. Generated from
 | `ddns_enable` | write | ddns |  |  | onoff | - | - |  |
 | `ddns_forceupdate` | write | ddns |  |  | - | - | - |  |
 | `ipf_view` | read | ipf |  |  | - | - | - |  |
-| `ipf_set` | write | ipf |  |  | param | - | - |  |
-| `ipf_rule` | write | ipf |  |  | param | - | - |  |
+| `ipf_set` | write | ipf | yes |  | param | - | - |  |
+| `ipf_rule` | write | ipf | yes |  | param | - | - |  |
 | `vpn_list` | read | vpn |  |  | - | - | - |  |
 | `vpn_remote` | read | vpn |  |  | - | - | - |  |
 | `vpn_graph` | read | vpn |  |  | - | - | - |  |
-| `vpn_setup` | write | vpn |  | yes | index, param | - | - |  |
-| `vpn_ovpn` | write | vpn |  | yes | param | - | - |  |
+| `vpn_setup` | write | vpn |  | yes | index, param | - | param |  |
+| `vpn_ovpn` | write | vpn |  | yes | param | - | param |  |
 | `vpn_dial_out` | write | vpn |  | yes | param | - | - |  |
 | `qos_setup` | write | qos |  | yes | param | - | - |  |
 | `qos_class` | write | qos |  | yes | param | - | - |  |
@@ -172,14 +172,14 @@ Every command in the registry becomes an MCP tool. Generated from
 | `dos_blacklist_show` | read | dos |  |  | - | - | - |  |
 | `dos_whitelist_show` | read | dos |  |  | - | - | - |  |
 | `dos_activate` | write | dos |  | yes | - | - | - |  |
-| `dos_deactivate` | write | dos |  | yes | - | - | - |  |
+| `dos_deactivate` | write | dos | yes | yes | - | - | - |  |
 | `internet_view` | read | internet |  |  | - | - | - |  |
 | `internet_set` | write | internet | yes | yes | wan, mode, username, password | - | password |  |
 | `ha_show` | read | ha |  |  | - | - | - |  |
 | `ha_status` | read | ha |  |  | - | - | - |  |
-| `ha_set` | write | ha |  | yes | param | - | - |  |
+| `ha_set` | write | ha | yes | yes | param | - | - |  |
 | `vrrp_show` | read | vrrp |  |  | - | - | - |  |
-| `vrrp_enable` | write | vrrp |  | yes | onoff | - | - |  |
+| `vrrp_enable` | write | vrrp | yes | yes | onoff | - | - |  |
 | `vrrp_set` | write | vrrp |  | yes | param | - | - |  |
 | `vrrp_apply` | write | vrrp |  |  | - | - | - |  |
 | `vrrp_reset` | write | vrrp |  |  | - | - | - |  |
@@ -188,9 +188,9 @@ Every command in the registry becomes an MCP tool. Generated from
 | `vigbrg_wlanstatus` | read | vigbrg |  |  | - | - | - |  |
 | `vigbrg_set` | write | vigbrg |  | yes | param | - | - |  |
 | `vlan_status` | read | vlan |  |  | - | - | - |  |
-| `vlan_on` | write | vlan |  | yes | - | - | - |  |
-| `vlan_off` | write | vlan |  | yes | - | - | - |  |
-| `vlan_group` | write | vlan |  | yes | param | - | - |  |
+| `vlan_on` | write | vlan | yes | yes | - | vlan_status | - |  |
+| `vlan_off` | write | vlan | yes | yes | - | vlan_status | - |  |
+| `vlan_group` | write | vlan |  | yes | param | vlan_status | - |  |
 | `switch_status` | read | switch |  |  | - | - | - |  |
 | `switch_list` | read | switch |  |  | - | - | - |  |
 | `switch_query` | read | switch |  |  | - | - | - |  |
@@ -210,7 +210,7 @@ Every command in the registry becomes an MCP tool. Generated from
 | `usb_temp` | read | usb |  |  | - | - | - |  |
 | `hsportal_info` | read | hsportal |  |  | - | - | - |  |
 | `hsportal_level` | read | hsportal |  |  | - | - | - |  |
-| `hsportal_setup` | write | hsportal |  |  | param | - | - |  |
+| `hsportal_setup` | write | hsportal |  |  | param | - | param |  |
 | `log_tail` | read | log |  |  | - | - | - |  |
 | `log_call` | read | log |  |  | - | - | - |  |
 | `log_filter` | read | log |  |  | - | - | - |  |
@@ -225,10 +225,10 @@ Every command in the registry becomes an MCP tool. Generated from
 | `radius_show_local_cer` | read | radius |  |  | - | - | - |  |
 | `local8021x_show` | read | local_8021x |  |  | - | - | - |  |
 | `local8021x_show_local_cer` | read | local_8021x |  |  | - | - | - |  |
-| `user_account` | write | user |  |  | param | - | - |  |
-| `user_edit` | write | user |  |  | param | - | - |  |
+| `user_account` | write | user | yes |  | param | - | param |  |
+| `user_edit` | write | user |  |  | param | - | param |  |
 | `user_set` | write | user |  |  | param | - | - |  |
-| `user_setdefault` | write | user |  |  | - | - | - |  |
+| `user_setdefault` | write | user | yes |  | - | - | - |  |
 | `upnp_on` | write | upnp |  | yes | - | - | - |  |
 | `upnp_off` | write | upnp |  | yes | - | - | - |  |
 | `upnp_nat` | read | upnp |  |  | - | - | - |  |
@@ -243,17 +243,17 @@ Every command in the registry becomes an MCP tool. Generated from
 | `csm_wcf` | write | csm |  |  | param | - | - |  |
 | `csm_dnsf` | write | csm |  |  | param | - | - |  |
 | `msubnet_status` | read | msubnet |  |  | - | - | - |  |
-| `msubnet_switch` | write | msubnet |  | yes | onoff | - | - |  |
+| `msubnet_switch` | write | msubnet | yes | yes | onoff | - | - |  |
 | `testmail_send` | write | testmail |  |  | - | - | - | yes |
 | `ip6_ping` | read | ip6 |  |  | host | - | - |  |
 | `ip6_tracert` | read | ip6 |  |  | host | - | - |  |
 | `ip6_addr` | write | ip6 |  | yes | param | - | - |  |
 | `ip6_mngt` | write | ip6 |  |  | proto, onoff | - | - |  |
 | `ldap_view` | read | ldap |  |  | - | - | - |  |
-| `ldap_set` | write | ldap |  |  | param | - | - |  |
-| `ldap_user` | write | ldap |  |  | param | - | - |  |
+| `ldap_set` | write | ldap |  |  | param | - | param |  |
+| `ldap_user` | write | ldap |  |  | param | - | param |  |
 | `tacacsplus_view` | read | tacacsplus |  |  | - | - | - |  |
-| `tacacsplus_set` | write | tacacsplus |  |  | param | - | - |  |
+| `tacacsplus_set` | write | tacacsplus |  |  | param | - | param |  |
 | `portmaptime_list` | read | portmaptime |  |  | - | - | - |  |
 | `portmaptime_set` | write | portmaptime |  |  | proto, seconds | - | - |  |
 | `portmaptime_flush` | write | portmaptime |  | yes | - | - | - |  |

@@ -15,7 +15,8 @@ operate the Vigor 3912S router.
 ```bash
 cp .env.example .env
 chmod 600 .env
-# edit .env: set VIGOR_HOST, VIGOR_USER, VIGOR_PASSWORD (VIGOR_* optional)
+# edit .env: VIGOR_HOST, USER, PASSWORD, and VIGOR_SSH_HOST_FINGERPRINT
+# (EXPOSE_TOOLS=readonly recommended locally)
 npm install
 npm run build
 ```
@@ -58,8 +59,8 @@ Each returns structured data (where a parser exists) plus the raw CLI output.
 
 Write tools never run automatically. The flow is always:
 
-**Step 1 — request the change.** The tool returns a **preview** of the exact
-CLI command plus a `confirm_token`:
+**Step 1 — request the change.** The tool returns a **preview** with the exact
+CLI command and a confirmation message to present to you:
 
 ```json
 {
@@ -67,18 +68,24 @@ CLI command plus a `confirm_token`:
   "preview": "wan disable WAN3",
   "affects_network": true,
   "dangerous": false,
-  "confirm_token": "a1b2c3d4e5f6..."
+  "human_confirm": false,
+  "message": "🛑 Router write — your approval is required … Reply with **yes** to approve."
 }
 ```
 
-**Step 2 — confirm.** Call the same tool again with the same arguments and the
-`confirm_token`. Only then is the command sent to the router.
+**Step 2 — approve.** You tell the assistant to proceed ("yes").
+
+- **Default** (`VIGOR_HUMAN_CONFIRM=false`): the assistant then calls the tool
+  again with the `confirm_token` from the preview.
+- **Human-confirm** (`VIGOR_HUMAN_CONFIRM=true`): the token is hidden. You must
+  approve **and** provide your **confirmation code**
+  (`VIGOR_CONFIRM_PASSPHRASE` on the server). Without it, the write cannot run:
 
 ```json
-{ "wan": 3, "confirm_token": "a1b2c3d4e5f6..." }
+{ "wan": 3, "confirmation_id": "a41f", "user_code": "<your-code>" }
 ```
 
-If the write is flagged **dangerous**, the confirm call must also include
+If the write is flagged **dangerous**, approval also requires
 `"acknowledge": true`.
 
 The result reports the change, a **before/after snapshot** (when a snapshot

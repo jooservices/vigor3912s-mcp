@@ -7,6 +7,7 @@ import { LogStore } from './db/log.js';
 import type { VigorClient } from './ssh/client.js';
 import { SshVigorClient } from './ssh/driver.js';
 import { ConfirmGate } from './tools/confirm-gate.js';
+import path from 'node:path';
 
 export function buildServer(config: VigorConfig = loadConfig()): {
   server: McpServer;
@@ -16,7 +17,10 @@ export function buildServer(config: VigorConfig = loadConfig()): {
 } {
   // Swap SshVigorClient for an SDK-backed implementation of VigorClient here.
   const client: VigorClient = new SshVigorClient(config);
-  const gate = new ConfirmGate();
+  const pendingFile = config.humanConfirm
+    ? path.join(path.dirname(config.logDb), 'pending-confirms.json')
+    : undefined;
+  const gate = new ConfirmGate(60000, 100, pendingFile);
   const store = new LogStore(config.logDb);
   const server = new McpServer({ name: 'vigor3912s-mcp', version: '0.5.0' });
   registerAllTools(server, client, {
@@ -24,6 +28,8 @@ export function buildServer(config: VigorConfig = loadConfig()): {
     store,
     readOnly: config.readOnly,
     autoCommit: config.autoCommit,
+    humanConfirm: config.humanConfirm,
+    confirmPassphrase: config.confirmPassphrase,
     exposeTools: config.exposeTools,
     disabledTools: config.disabledTools,
     toolOutputLimit: config.toolOutputLimit,
