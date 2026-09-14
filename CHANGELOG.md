@@ -6,15 +6,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-14
+
 ### Added
 
+- **SSH host-key pinning** (`VIGOR_SSH_HOST_FINGERPRINT`, OpenSSH `SHA256:…` or
+  hex). Required unless `VIGOR_SSH_INSECURE_SKIP_VERIFY=true` (tests /
+  simulated DrayOS only).
+- Shared **Zod validators** (`src/commands/validators.ts`) and contiguous
+  IPv4 netmask checks for `ip_nmask` / route masks.
+- **Write policy map** (`src/commands/write-policy.ts`) separate from the CLI
+  catalog — expanded `dangerous` / `secretArgs` / `snapshotRead` coverage.
+- **Write executor** (`src/commands/write-executor.ts`) for confirm → snapshot
+  → execute → commit → audit outside the MCP adapter.
+- Registry-derived **read allowlist** (`src/commands/read-allowlist.ts`) shared
+  with the SSH driver (no parallel ping/tracert regexes).
 - **Human-in-the-loop confirm** (`VIGOR_HUMAN_CONFIRM=true`, default off):
-  every write hides the confirm token from the model and requires the human to
-  approve in chat ("are you sure") and provide the confirmation code
-  (`VIGOR_CONFIRM_PASSPHRASE`). Without the code, the write cannot run.
-- Write previews now include an informative confirmation `message` to present
-  to the user.
-- `tools/confirm.mjs` lists pending confirmations for the human to verify.
+  token hidden from the model; approve with `confirmation_id` +
+  `VIGOR_CONFIRM_PASSPHRASE`. `tools/confirm.mjs` lists pending intents.
+- Idle SSH buffer cap; longer `confirmationId`; timing-safe passphrase verify
+  with rate limiting; `LogStore.query` limited to a single `SELECT`.
+
+### Changed
+
+- Command registry split into per-family modules under
+  `src/commands/registry/`.
+- Read formatters receive validated args (`format(raw, args)`); `ip_ping`
+  reports the requested target.
+- Confirm denial audit maps `token_expired` → `expired`.
+- Dev dependency **vitest** upgraded to v5 (`npm audit` clean).
+
+### Security
+
+- Host-key verification fails closed by default (MITM defense on LAN).
+- Broader redaction of free-form credential params (`user_*`, `ldap_*`,
+  `tacacsplus_set`, VPN setup, …).
+- Documented live-router ops and accepted risks in `SECURITY.md`.
 
 ## [0.5.0] - 2026-09-13
 
@@ -53,7 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI injection guards (`noControl()` / `safeText()` zod validators).
 - `VigorClient` interface (`src/ssh/client.ts`) so a future 3912S SDK can
   replace the ssh2 implementation.
-- 50 unit tests; E2E read tools verified one-by-one against a real router
+- Unit tests; E2E read tools verified one-by-one against a real router
   (fw 4.4.7_RC2); fake DrayOS SSH server for CI.
 - Documentation: overview, architecture, user/admin/troubleshooting guides,
   command registry, logging schema, configuration, MCP integration,

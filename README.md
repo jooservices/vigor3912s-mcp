@@ -15,15 +15,17 @@ tools:
 
 - **Read commands (108)** run freely — verified view/status/display commands,
   all 108 verified against the real router (fw 4.4.7_RC2).
-- **Write commands (109)** require a two-step confirm gate (preview -> single-use
-  60s token) before execution.
+- **Write commands (109)** require a two-step confirm gate (preview → single-use
+  60s token) before execution. Lockout-prone writes also need
+  `acknowledge: true`.
 
 ## Status
 
-`v0.5.0` — local macOS deployment (stdio transport), GitHub hosting pending.
+`v0.6.0` — local stdio MCP server for trusted LAN use; hosted on
+[jooservices/vigor3912s-mcp](https://github.com/jooservices/vigor3912s-mcp).
 
-Local deployments expose only read tools by default
-(`EXPOSE_TOOLS=readonly`); write tools are exercised in CI against a simulated
+Local deployments should expose only read tools by default
+(`EXPOSE_TOOLS=readonly`). Write tools are exercised in CI against a simulated
 DrayOS server (`npm run e2e:testing`, `EXPOSE_TOOLS=all`).
 
 ## Documentation
@@ -33,32 +35,33 @@ DrayOS server (`npm run e2e:testing`, `EXPOSE_TOOLS=all`).
 - [Command registry](docs/03-reference/commands.md) · [Logging schema](docs/03-reference/logging-schema.md) · [Configuration](docs/03-reference/configuration.md) · [MCP integration](docs/03-reference/mcp-integration.md)
 - [Development](docs/04-development/development.md) · [Testing](docs/04-development/testing.md) · [SDK integration](docs/04-development/sdk-integration.md)
 - [Vigor 3912S reference](docs/05-3912s-reference/README.md) (self-contained, incl. original PDFs)
+- [CHANGELOG](CHANGELOG.md) · [SECURITY](SECURITY.md)
 
 ## Safety model
 
-- **Read tools** are covered by unit tests (mocked shell) **and** the read-only
-  E2E suite (`npm run e2e`), which never calls a write tool.
-- **Write tools are covered by unit tests with a mocked shell ONLY.** The E2E
-  suite never sends a write command to the router. A write only executes after
-  the user confirms with the token from the preview.
-- **Confirm gate**: single-use 60s token bound to the exact rendered command.
-- **Dangerous writes** (reboot, port changes, WAN/DHCP/firewall, password, ...)
-  additionally require `acknowledge: true` on the confirm call and return a
-  lockout warning.
-- **Auto-commit**: after a successful confirmed write, `sys commit` runs to
-  persist (configurable via `VIGOR_AUTO_COMMIT`; skipped for commands flagged
-  `skipCommit`). The commit outcome is recorded in `write_audit.commit_status`.
-- **Command mutex**: all commands are serialized so concurrent tool calls never
-  interleave on the shared SSH shell.
-- **Read-only mode**: `VIGOR_READ_ONLY=true` disables all write tools.
-- **Hard blocklist** in the driver refuses `sys cfg default`, `sys halt`,
-  `mngt rmtcfg enable`, and `linux clean *` regardless of the registry.
-- **Tool filters**: `VIGOR_ENABLED_TOOLS` / `VIGOR_DISABLED_TOOLS` limit which
-  tools are registered; read tool output is capped (`VIGOR_TOOL_OUTPUT_LIMIT`).
-- **CLI injection** is blocked by `noControl()` / `safeText()` argument
-  validators.
-- Credentials live only in `.env` (chmod 600, gitignored); nothing sensitive is
-  logged.
+- **SSH host-key pin** — set `VIGOR_SSH_HOST_FINGERPRINT` (required). Use
+  `VIGOR_SSH_INSECURE_SKIP_VERIFY=true` only for tests / simulated DrayOS.
+- **Read tools** — unit tests (mocked shell) **and** read-only E2E
+  (`npm run e2e`); E2E never calls a write tool on a real router.
+- **Write tools** — unit tests with a mocked shell; CI E2E against simulated
+  DrayOS only. A write executes only after confirm (token or human code).
+- **Confirm gate** — single-use 60s token bound to the exact rendered command.
+- **Dangerous writes** — additionally require `acknowledge: true` and return a
+  lockout warning (policy in `src/commands/write-policy.ts`).
+- **Human confirm (optional)** — `VIGOR_HUMAN_CONFIRM=true` hides the token;
+  approve with `confirmation_id` + `VIGOR_CONFIRM_PASSPHRASE`.
+- **Auto-commit** — after a successful confirmed write, `sys commit` runs
+  (`VIGOR_AUTO_COMMIT`; skipped for `skipCommit`). Outcome in
+  `write_audit.commit_status`.
+- **Command mutex** — commands are serialized on the shared SSH shell.
+- **Hard blocklist** — `sys cfg default`, `sys halt`, `mngt rmtcfg enable`,
+  `linux clean *` refused regardless of the registry.
+- **Tool filters** — `EXPOSE_TOOLS` / `VIGOR_DISABLED_TOOLS`; read output capped
+  via `VIGOR_TOOL_OUTPUT_LIMIT`.
+- **Injection guards** — shared Zod validators (`safeText` / `noControl` /
+  `ipv4Mask`, …).
+- Credentials live only in `.env` (chmod 600, gitignored); secret args are
+  redacted in SQLite logs.
 
 ## Architecture
 
@@ -69,29 +72,27 @@ opencode ←stdio→ MCP server (Node 24 + TypeScript)
                 DrayOS CLI @ <VIGOR_HOST>  (prompt `DrayTek> `)
 ```
 
-- DrayOS SSH does **not** support the exec channel and does **not** support
-  key auth — the client must drive an interactive shell (password auth).
-- `VigorClient` (`src/ssh/driver.ts`) is the single low-level SSH client:
-  lazy connect/reconnect, prompt detection, pager (`--- MORE ---`) handling.
-- **Command registry** (`src/commands/registry/`) is the single source of
-  truth for every command: read commands feed the driver's read allowlist
-  (`runCommand()` refuses anything else); write commands require the confirm
-  gate before `runWriteCommand()` runs them. No free-form commands reach the
-  router.
+| Layer | Role |
+| --- | --- |
+| `src/commands/registry/` | CLI catalog by family (`R` / `Ra` / `W`) |
+| `src/commands/validators.ts` | Shared Zod arg schemas |
+| `src/commands/write-policy.ts` | `dangerous` / `secretArgs` / `snapshotRead` / … |
+| `src/commands/write-executor.ts` | Confirm → snapshot → execute → commit → audit |
+| `src/commands/build.ts` | MCP tool registration |
+| `src/commands/read-allowlist.ts` | Registry-derived allowlist for `runCommand()` |
+| `src/ssh/driver.ts` | Interactive shell client + host-key verify |
+
+DrayOS SSH does **not** support the exec channel or key auth — password auth
+and an interactive shell only.
 
 ## Tools
 
-Every command in the registry becomes an MCP tool (generated by
-`src/commands/build.ts`):
+Every registry command becomes an MCP tool:
 
-- **Read tools** (108) run the registry command and return the output
-  (structured where a parser exists).
-- **Write tools** (109) are two-step: the first call returns a preview of the
-  exact CLI command plus a `confirm_token`; calling again with the same
-  arguments and that token executes it. Tokens are single-use, expire after 60s,
-  and are bound to the exact rendered command.
-
-Key read tools and their live-verified CLI (fw 4.4.7_RC2):
+- **Read tools (108)** — run the CLI and return output (structured when a
+  parser exists). Formatters receive validated args (e.g. `ip_ping` target).
+- **Write tools (109)** — first call returns a preview + `confirm_token` (or
+  `confirmation_id` in human-confirm mode); second call executes.
 
 | Tool | CLI (live-verified, fw 4.4.7_RC2) |
 | --- | --- |
@@ -107,14 +108,20 @@ Key read tools and their live-verified CLI (fw 4.4.7_RC2):
 ## Requirements
 
 - Node.js >= 24
-- Router SSH server enabled (`System Maintenance >> Management`), reachable on
-  the LAN, admin password in `.env`
+- Router SSH enabled (`System Maintenance >> Management`), reachable on the LAN
+- Admin password and **SSH host fingerprint** in `.env`
 
 ## Setup
 
 ```bash
-cp .env.example .env      # set VIGOR_* (host, port, user, password)
-chmod 600 .env            # .env is gitignored
+cp .env.example .env
+# Set VIGOR_HOST / PORT / USER / PASSWORD
+# Pin the host key (required for live routers):
+ssh-keyscan -t rsa,ecdsa,ed25519 "$VIGOR_HOST" 2>/dev/null | ssh-keygen -lf - -E sha256
+# → put the SHA256:… value in VIGOR_SSH_HOST_FINGERPRINT
+# Recommended local surface:
+# EXPOSE_TOOLS=readonly
+chmod 600 .env
 npm install
 npm run build
 ```
@@ -140,24 +147,16 @@ Restart opencode, then: `get the WAN status from the router`.
 
 ## Logging (SQLite)
 
-Every request sent to the router is logged to a local SQLite database
-(`data/vigor3912s.db`, configurable via `VIGOR_LOG_DB`, WAL mode):
+Every router request is logged to `data/vigor3912s.db` (or `VIGOR_LOG_DB`, WAL):
 
-- `requests` — every read and write request: tool, exact CLI, args, outcome
-  (`ok` / `error` / `needs_confirmation` / `denied`), error code, duration,
-  output excerpt.
-- `write_audit` — the write lifecycle: `preview` → `confirmed` → `executed` /
-  `failed`, with `before_snapshot` and `after_snapshot` captured by running a
-  related read command before and after the change (where a `snapshotRead` is
-  defined, e.g. `wan_disable` → `wan_status`, `dhcp_*` → `dhcp_status`), plus
-  success/failure.
+- `requests` — tool, CLI, args, outcome, timing, output excerpt
+- `write_audit` — preview / executed / failed / expired / mismatch / denied,
+  optional before/after snapshots, `commit_status`
 
-Security: passwords and secret args (`sys_passwd`, `internet_set` password)
-are redacted to `***` in both the logged command and args. Logging is
-best-effort — a log failure never blocks a router command.
+Passwords and configured `secretArgs` are redacted to `***`. Logging is
+best-effort and never blocks a router command.
 
 ```bash
-# inspect
 sqlite3 data/vigor3912s.db "SELECT ts, tool_id, command, outcome FROM requests ORDER BY id DESC LIMIT 20;"
 sqlite3 data/vigor3912s.db "SELECT ts, tool_id, status, success FROM write_audit ORDER BY id DESC LIMIT 20;"
 ```
@@ -165,29 +164,18 @@ sqlite3 data/vigor3912s.db "SELECT ts, tool_id, status, success FROM write_audit
 ## Development
 
 ```bash
-npm run lint     # tsc --noEmit
-npm test         # unit tests (mocked ssh2, no router needed)
-npm run e2e      # E2E read tools one-by-one against the real router (requires .env)
+npm run lint        # tsc --noEmit
+npm test            # unit tests (mocked ssh2; no router)
+npm run e2e         # read tools vs real router (needs .env + host pin)
+npm run e2e:testing # full tool surface vs simulated DrayOS (CI)
 ```
-
-The E2E suite runs read tools only, one tool per fresh SSH session
-(`tools/e2e_one.mjs`), recording passes in `recon-output/e2e-passed.json` so
-already-verified tools are skipped. Write tools are never invoked by E2E.
 
 ## Security
 
-- No secrets are logged or echoed; credentials come only from `.env` (chmod 600).
-- The driver gates are the last line of defense: `runCommand()` accepts only
-  registry read commands; `runWriteCommand()` runs only commands authorized
-  after a confirmed preview. No free-form command reaches the router.
-- Write argument validators reject control characters and shell metacharacters
-  (CLI injection). Never weaken the driver gates or the confirm gate.
+See [SECURITY.md](SECURITY.md) for the threat model, live-router ops
+(`HUMAN_CONFIRM` / `readonly`), and accepted risks (`noControl` passwords,
+internal `sys commit` after a gated write).
 
-## Accepted risks (local dev only)
-
-- `npm audit` reports one **moderate** dev-only advisory (`GHSA-82fw-gwwq-j7x9`,
-  via `@vitest/mocker`). It affects the test runner only, never the router or
-  the MCP data path. Triage before any public release / CI hardening.
-- Argument-level syntax for some write commands is best-effort (recon `?` +
-  command-map docs). Each write command should be verified on-device before
-  real-world use; the preview step always shows the exact CLI first.
+- Never weaken the driver allowlist/blocklist or the confirm gate.
+- Do not set `VIGOR_SSH_INSECURE_SKIP_VERIFY=true` against a live router on an
+  untrusted LAN.

@@ -11,9 +11,15 @@ project directory via `dotenv`).
 | `VIGOR_PORT` | `22` | SSH port |
 | `VIGOR_USER` | `admin` | Router admin user |
 | `VIGOR_PASSWORD` | — (required) | Router admin password |
+| `VIGOR_SSH_HOST_FINGERPRINT` | — | Expected host key (`SHA256:…` or 64-char hex). **Required** unless insecure skip is set |
+| `VIGOR_SSH_INSECURE_SKIP_VERIFY` | `false` | `true` = skip host-key check (tests / simulated DrayOS **only**) |
 
 > The password is stored plaintext in `.env` (chmod 600). It is never logged or
-> echoed. Prefer `VIGOR_READ_ONLY=true` if you only need monitoring.
+> echoed. Prefer `EXPOSE_TOOLS=readonly` (or `VIGOR_READ_ONLY=true`) for
+> monitoring-only local use.
+>
+> Pin the host key:
+> `ssh-keyscan -t rsa,ecdsa,ed25519 "$VIGOR_HOST" 2>/dev/null | ssh-keygen -lf - -E sha256`
 
 ## Logging
 
@@ -65,6 +71,7 @@ VIGOR_HOST=192.168.1.1
 VIGOR_PORT=22
 VIGOR_USER=admin
 VIGOR_PASSWORD=your-password
+VIGOR_SSH_HOST_FINGERPRINT=SHA256:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 VIGOR_LOG_DB=data/vigor3912s.db
 # Expose only read tools to the AI (recommended for local / real router):
 EXPOSE_TOOLS=readonly
@@ -74,4 +81,5 @@ EXPOSE_TOOLS=readonly
 # VIGOR_CONFIRM_PASSPHRASE=change-me-strong-code
 # VIGOR_DISABLED_TOOLS=sys_reboot,testmail_send
 # VIGOR_TOOL_OUTPUT_LIMIT=16000
+# VIGOR_SSH_INSECURE_SKIP_VERIFY=true   # never on a live untrusted LAN
 ```

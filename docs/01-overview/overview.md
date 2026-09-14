@@ -20,18 +20,20 @@ An MCP (Model Context Protocol) server that lets AI assistants operate a
 | Protocol | MCP (stdio transport) |
 | Runtime | Node.js >= 24, TypeScript |
 | Router access | SSH interactive shell (DrayOS has no exec channel) |
-| Deployment | Local macOS (stdio); works with opencode, ChatGPT, Claude Code, etc. |
-| Version | 1.0.0 |
+| Deployment | Local stdio MCP; works with opencode, ChatGPT, Claude Code, etc. |
+| Version | 0.6.0 |
 
 ## Safety model (summary)
 
+- **SSH host-key pin** (`VIGOR_SSH_HOST_FINGERPRINT`) fails closed by default.
 - Read tools only send **verified read-only** commands (allowlist).
 - Write tools require a **single-use, 60s token** bound to the exact command.
 - **Dangerous writes** additionally require `acknowledge: true`.
+- Optional **human confirm** hides the token from the model.
 - **Command mutex** serializes all commands (no interleaving).
 - **Hard blocklist** (`sys cfg default`, `sys halt`, `mngt rmtcfg enable`,
   `linux clean *`) is refused at the driver.
-- Optional **read-only mode** (`VIGOR_READ_ONLY=true`) disables all writes.
+- Optional **read-only / `EXPOSE_TOOLS=readonly`** limits the AI surface.
 - Secrets and passwords are **redacted** in logs.
 - The E2E suite never touches a real router for writes.
 
