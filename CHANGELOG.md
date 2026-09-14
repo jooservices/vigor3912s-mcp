@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Human-in-the-loop confirm** (`VIGOR_HUMAN_CONFIRM=true`, default off):
+  every write hides the confirm token from the model and requires the human to
+  approve in chat ("are you sure") and provide the confirmation code
+  (`VIGOR_CONFIRM_PASSPHRASE`). Without the code, the write cannot run.
+- Write previews now include an informative confirmation `message` to present
+  to the user.
+- `tools/confirm.mjs` lists pending confirmations for the human to verify.
+
 ## [0.5.0] - 2026-09-13
 
 ### Changed

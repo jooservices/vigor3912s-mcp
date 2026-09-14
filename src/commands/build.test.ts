@@ -19,6 +19,8 @@ function cfg(overrides: Record<string, unknown> = {}) {
     logDb: ':memory:',
     readOnly: false,
     autoCommit: false,
+    humanConfirm: false,
+    confirmPassphrase: undefined,
     exposeTools: [],
     disabledTools: [],
     toolOutputLimit: 16000,
@@ -276,6 +278,63 @@ describe('registry -> MCP tool generation', () => {
     const body = JSON.parse(textOf(res));
     expect(body.truncated).toBe(true);
     expect(body.output.length).toBeLessThan(300);
+    await server.close();
+  });
+
+  it('default mode (humanConfirm off) returns the token in the preview', async () => {
+    FakeClient.script = { '': '' };
+    const { mcp, server } = await startServer();
+    const res = await mcp.callTool({ name: 'wan_disable', arguments: { wan: 1 } });
+    const body = JSON.parse(textOf(res));
+    expect(body.human_confirm).toBe(false);
+    expect(typeof body.confirm_token).toBe('string');
+    expect(body.message).toContain('approval');
+    await server.close();
+  });
+
+  it('human-confirm mode hides the token and rejects a wrong user code', async () => {
+    FakeClient.script = { '': '', 'wan disable WAN1': '% done', 'wan status': 'BWAN1: Offline' };
+    const { mcp, server, store } = await startServer(
+      cfg({ humanConfirm: true, confirmPassphrase: 'secret-passphrase' }),
+    );
+    const preview = await mcp.callTool({ name: 'wan_disable', arguments: { wan: 1 } });
+    const body = JSON.parse(textOf(preview));
+    expect(body.human_confirm).toBe(true);
+    expect(body.confirm_token).toBeUndefined(); // token hidden from the model
+    expect(typeof body.confirmation_id).toBe('string');
+    expect(body.message).toContain('confirmation code');
+
+    // wrong code -> denied, nothing sent to the router
+    const denied = await mcp.callTool({
+      name: 'wan_disable',
+      arguments: { wan: 1, confirmation_id: body.confirmation_id, user_code: 'wrong', acknowledge: true },
+    });
+    expect(isError(denied)).toBe(true);
+    expect(JSON.stringify(denied.content)).toContain('wrong confirmation code');
+    const wrote0 = FakeClient.instances.flatMap((c) => c.getStream()?.written ?? []);
+    expect(wrote0.some((w) => w.includes('wan disable'))).toBe(false);
+
+    // correct code -> executes
+    const done = await mcp.callTool({
+      name: 'wan_disable',
+      arguments: { wan: 1, confirmation_id: body.confirmation_id, user_code: 'secret-passphrase', acknowledge: true },
+    });
+    expect(JSON.parse(textOf(done)).status).toBe('done');
+    await server.close();
+  });
+
+  it('human-confirm mode requires confirmation_id and user_code', async () => {
+    FakeClient.script = { '': '' };
+    const { mcp, server } = await startServer(
+      cfg({ humanConfirm: true, confirmPassphrase: 'secret-passphrase' }),
+    );
+    // has a confirmation_id but no user_code -> denied
+    const res = await mcp.callTool({
+      name: 'wan_disable',
+      arguments: { wan: 1, confirmation_id: 'bogus', acknowledge: true },
+    });
+    expect(isError(res)).toBe(true);
+    expect(JSON.stringify(res.content)).toContain('requires confirmation_id and user_code');
     await server.close();
   });
 });
