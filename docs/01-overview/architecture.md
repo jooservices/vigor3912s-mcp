@@ -19,7 +19,7 @@ SSH interactive shell → DrayOS CLI (prompt `DrayTek> `, pager `--- MORE ---`)
 
 ## Command registry → tools
 
-`src/commands/registry.ts` is the **single source of truth**: 217 commands
+`src/commands/registry/` is the **single source of truth**: 217 commands
 across 42 families. Each entry declares kind (`read` | `write`), args (zod),
 safety flags (`dangerous`, `affectsNetwork`, `skipCommit`, `secretArgs`), and an
 optional snapshot read + output formatter.

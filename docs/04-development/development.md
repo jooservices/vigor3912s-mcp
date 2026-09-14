@@ -7,8 +7,9 @@ src/
   index.ts            MCP server entry (buildServer + stdio)
   config.ts           env loading/validation
   commands/
-    registry.ts       single source of truth: 217 commands / 42 families
-    build.ts          registry → MCP tools (+ logging, confirm flow)
+    registry/         single source of truth: 217 commands / 42 families
+    build.ts          registry → MCP tool registration
+    write-executor.ts write confirm → execute → commit → audit
   db/log.ts           SQLite logging (node:sqlite)
   ssh/
     client.ts         VigorClient interface (SDK-ready contract)
@@ -35,7 +36,7 @@ npm run e2e:testing  # CI E2E: simulated DrayOS server, all tools
 
 ## Adding or changing a command
 
-Edit `src/commands/registry.ts` only:
+Edit the matching family file under `src/commands/registry/families/` only:
 
 1. Classify correctly: `read` = view/status/display only; `write` = changes
    state.

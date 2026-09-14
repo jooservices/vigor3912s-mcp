@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { readCommands } from './commands/registry.js';
+import { readCommands } from './commands/registry/index.js';
 
 export const configSchema = z.object({
   host: z.string().min(1).default('192.168.1.1'),

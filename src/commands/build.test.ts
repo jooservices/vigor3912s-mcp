@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readCommands, writeCommands } from './registry.js';
+import { readCommands, writeCommands } from './registry/index.js';
 import { buildServer } from '../index.js';
 import { FakeClient } from '../test/fake-ssh2.js';
 
@@ -78,6 +78,19 @@ describe('registry -> MCP tool generation', () => {
     const { mcp, server } = await startServer();
     const res = await mcp.callTool({ name: 'show_session', arguments: {} });
     expect(textOf(res)).toContain('Current Session Usage: 110');
+    await server.close();
+  });
+
+  it('passes validated args into formatters (ip_ping target)', async () => {
+    FakeClient.script = {
+      '': '',
+      'ip ping 8.8.8.8': 'Packets: Sent = 5, Received = 5, Lost = 0 (0% loss)',
+    };
+    const { mcp, server } = await startServer();
+    const res = await mcp.callTool({ name: 'ip_ping', arguments: { host: '8.8.8.8' } });
+    const body = JSON.parse(textOf(res));
+    expect(body.target).toBe('8.8.8.8');
+    expect(body.sent).toBe(5);
     await server.close();
   });
 

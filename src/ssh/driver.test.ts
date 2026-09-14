@@ -190,6 +190,17 @@ describe('VigorClient write path (confirm-gated)', () => {
     });
   });
 
+  it('strips the echoed write command from returned output (cleanOutput)', async () => {
+    const command = 'sys passwd old-secret new-secret';
+    fake.FakeClient.script = { '': '', [command]: 'Password changed' };
+    const client = new SshVigorClient(cfg());
+    client.authorizeWrite(command);
+    const out = await client.runWriteCommand(command);
+    expect(out).toContain('Password changed');
+    expect(out).not.toContain('old-secret');
+    expect(out).not.toContain(command);
+  });
+
   it('authorizing one command does not authorize a different write', async () => {
     fake.FakeClient.script = { '': '' };
     const client = new SshVigorClient(cfg());

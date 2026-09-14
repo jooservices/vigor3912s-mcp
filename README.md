@@ -73,7 +73,7 @@ opencode ←stdio→ MCP server (Node 24 + TypeScript)
   key auth — the client must drive an interactive shell (password auth).
 - `VigorClient` (`src/ssh/driver.ts`) is the single low-level SSH client:
   lazy connect/reconnect, prompt detection, pager (`--- MORE ---`) handling.
-- **Command registry** (`src/commands/registry.ts`) is the single source of
+- **Command registry** (`src/commands/registry/`) is the single source of
   truth for every command: read commands feed the driver's read allowlist
   (`runCommand()` refuses anything else); write commands require the confirm
   gate before `runWriteCommand()` runs them. No free-form commands reach the

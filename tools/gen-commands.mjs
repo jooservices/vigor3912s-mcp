@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { allCommands, REGISTRY } from '../dist/commands/registry.js';
+import { allCommands, REGISTRY } from '../dist/commands/registry/index.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const out = path.resolve(here, '../docs/03-reference/commands.md');
@@ -28,7 +28,7 @@ const families = REGISTRY.map((f) => `- **${f.family}** — ${f.desc}`).join('\n
 const md = `# Command registry
 
 Every command in the registry becomes an MCP tool. Generated from
-\`src/commands/registry.ts\` — do not edit by hand; run
+\`src/commands/registry/\` — do not edit generated docs by hand; run
 \`node tools/gen-commands.mjs\`.
 
 **Totals:** ${allCommands().length} commands · ${allCommands().filter((c) => c.kind === 'read').length} read · ${allCommands().filter((c) => c.kind === 'write').length} write · ${REGISTRY.length} families
