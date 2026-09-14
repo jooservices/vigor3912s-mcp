@@ -25,6 +25,7 @@ const env = {
   VIGOR_LOG_DB: LOG_DB,
   VIGOR_AUTO_COMMIT: 'true',
   EXPOSE_TOOLS: 'all',
+  VIGOR_SSH_INSECURE_SKIP_VERIFY: 'true',
   DOTENV_CONFIG_PATH: path.join(cwd, '.env.testing'),
 };
 
