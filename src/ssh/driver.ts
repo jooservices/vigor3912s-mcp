@@ -33,6 +33,8 @@ const MORE_RE = /---\s*MORE\s*---/;
 const ECHO_STRIP = /^\s*(?:>|#)\s*/;
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_MAX_PAGES = 60;
+/** Cap unsolicited SSH data when no command waiter is active. */
+const MAX_IDLE_BUF = 64 * 1024;
 
 /**
  * HARD blocklist: commands that must never be executed, regardless of the
@@ -272,7 +274,12 @@ const waiter: Waiter = {
   private onData(chunk: Buffer): void {
     this.buf += chunk.toString('utf8');
     const w = this.waiter;
-    if (!w) return;
+    if (!w) {
+      if (this.buf.length > MAX_IDLE_BUF) {
+        this.buf = this.buf.slice(-MAX_IDLE_BUF);
+      }
+      return;
+    }
     const segment = this.buf.slice(w.start);
     // Respond to each NEW "--- MORE ---" marker exactly once. Checking the
     // whole segment would re-fire on every later chunk and flood the pager.

@@ -102,4 +102,12 @@ describe('LogStore', () => {
       });
     }).not.toThrow();
   });
+
+  it('rejects non-SELECT or multi-statement query SQL', () => {
+    const store = new LogStore(':memory:');
+    expect(() => store.query('DELETE FROM requests')).toThrow(/SELECT/);
+    expect(() => store.query('SELECT 1; SELECT 2')).toThrow(/SELECT/);
+    expect(store.query<Array<{ ok: number }>>('SELECT 1 AS ok')).toEqual([{ ok: 1 }]);
+    store.close();
+  });
 });
