@@ -17,7 +17,7 @@ goes through the confirm gate; commands marked **dangerous** also need
 | Disable a WAN | `wan_disable` ⚠ | `{ wan: 1..12 }` |
 | Set WAN MTU | `wan_mtu` ⚠ | `{ wan, mtu }` |
 | Set WAN DNS | `wan_dns` | `{ wan, primary, secondary? }` |
-| WAN internet mode (PPPoE/DHCP/static) | `internet_set` ⚠ | `{ wan, mode, username?, password? }` |
+| WAN internet mode / ISP Name | `internet_set` ⚠ | `{ wan, mode, ispName?, username?, password? }` |
 
 ⚠ = dangerous (requires acknowledge).
 
@@ -80,12 +80,24 @@ goes through the confirm gate; commands marked **dangerous** also need
 | Enable SSH to Linux env | `linux_ssh_enable` | — |
 | Set Linux app IP | `linux_setlinuxip` ⚠ | `{ ip, cidr, gateway }` |
 
+## Safe live example — WAN ISP Name only
+
+To rename the ISP label on WAN7 without changing mode/auth (verified live on
+fw 4.4.7_RC2):
+
+1. Read first: `internet_view` / `show_status`.
+2. Write: `internet_set` with `{ wan: 7, mode: <current>, ispName: "…" }`.
+3. Sign with `node tools/approve.mjs <confirmation_id>` and re-call with
+   `signature` (+ `acknowledge: true` when the tier is dual).
+4. Confirm with `internet_view` again.
+
+Helpers (LAN only; never commit `.env`): `tools/e2e_wan7_ispname_*.mjs`.
+
 ## Before risky operations
 
 1. Take a WebUI config backup.
 2. Prefer read tools first (`wan_status`, `dhcp_status`, `ip_route_status`, ...).
-3. Use the preview — verify the exact command before confirming.
-4. For dangerous writes, confirm you accept the lockout / connectivity risk
-   (`acknowledge: true`).
+3. Use the preview — verify the exact CLI before signing.
+4. For dual / dangerous writes, accept the lockout risk (`acknowledge: true`).
 5. After the change, re-check state with the read tools; the audit log in
    `data/vigor3912s.db` keeps before/after snapshots.

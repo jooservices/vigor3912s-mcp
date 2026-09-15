@@ -15,7 +15,7 @@ MCP tools / confirm / audit
 
 | Layer | Owns |
 | --- | --- |
-| MCP | Curated + sdk_void tools (~300), confirm gate, human confirm UX, SQLite audit, env/config, hard blocklist + read allowlist policy |
+| MCP | Curated + sdk_void tools (302 / 43 families), Ed25519 confirm gate, SQLite audit, env/config, hard blocklist + read allowlist policy |
 | SDK | DrayOS framing, typed operations, parsers, capability manifest, `execute` / `invoke` |
 | Transport adapter (`SshClientTransport`) | Map SDK `Transport.send(frame)` → ssh-client interactive shell |
 | ssh-client | Generic SSH only (prompt/pager/session) — no DrayOS domain |

@@ -33,9 +33,9 @@ working directory = project dir. Tool ids match `docs/03-reference/commands.md`.
 ## Tool naming & types
 
 - Tool ids are the registry ids (e.g. `wan_status`, `dhcp_status`,
-  `sys_passwd`, `ip_route_add`).
-- Read tools take an empty schema (except `ip_ping` / `ip_tracert` /
-  `ip6_ping` / `ip6_tracert`, which take `{ host }`).
+  `sys_passwd`, `ip_route_add`, `internet_set`).
+- Read tools use their registry Zod schemas (many are empty; diagnostics like
+  `ip_ping` take `{ host }`; curated families may take typed fields).
 - Write tools accept their command args plus:
   - `confirmation_id` (string, optional) — from the preview response.
   - `signature` (string, optional) — Ed25519 signature over `sign_payload`.
