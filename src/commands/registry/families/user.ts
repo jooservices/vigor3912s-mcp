@@ -1,8 +1,12 @@
 import { z } from 'zod';
 import { W } from '../builders.js';
 import type { FamilyDef } from '../types.js';
-import { noControl, safeText } from '../../validators.js';
+import { noControl } from '../../validators.js';
 
+/**
+ * Aligns with SDK `UserManageInput`: free-form flag text stays in `param`
+ * (SDK YAGNI); tools map 1:1 to action variants.
+ */
 export const userFamily: FamilyDef = {
   family: 'user',
   desc: 'User management.',
@@ -11,8 +15,8 @@ export const userFamily: FamilyDef = {
       'user_account',
       'user',
       (a) => `user account ${String(a.userName)} ${String(a.param)}`,
-      { userName: noControl(63), param: safeText() },
-      'Configure user account (user account <USER_NAME> <flags...>)',
+      { userName: noControl(63), param: noControl() },
+      'Configure user account (SDK cli.user action=account)',
     ),
     W(
       'user_edit',
@@ -20,17 +24,23 @@ export const userFamily: FamilyDef = {
       (a) => `user edit ${String(a.profileIdx)} ${String(a.param)}`,
       {
         profileIdx: z.number().int().min(0),
-        param: safeText(),
+        param: noControl(),
       },
-      'Edit user profile (user edit <PROFILE_IDX> <flags...>)',
+      'Edit user profile (SDK cli.user action=edit)',
     ),
     W(
       'user_set',
       'user',
       (a) => `user set ${String(a.param)}`,
-      { param: safeText() },
-      'User management general setup (user set <flags...>)',
+      { param: noControl() },
+      'User general setup (SDK cli.user action=set)',
     ),
-    W('user_setdefault', 'user', () => 'user setdefault', {}, 'Reset all user profiles to factory default'),
+    W(
+      'user_setdefault',
+      'user',
+      () => 'user setdefault',
+      {},
+      'Reset all user profiles (SDK cli.user action=setdefault)',
+    ),
   ],
 };

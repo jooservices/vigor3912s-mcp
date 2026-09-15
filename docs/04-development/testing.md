@@ -10,7 +10,7 @@
 
 Mocks: `FakeVigorClient` / `FakeSshClient`. Coverage excludes curated
 `registry/**`, `config.ts`, `index.ts`, `build.ts`, `confirm-gate.ts` (covered
-by dedicated/e2e flows). Human-confirm / token deny matrix is covered in
+by dedicated/e2e flows). Human-confirm / signed-approval deny coverage is covered in
 `write-executor.test.ts`.
 
 ## E2E

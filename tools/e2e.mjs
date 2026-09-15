@@ -90,7 +90,10 @@ const WRITE_ARGS = {
   dos_activate: {},
   portmaptime_set: { proto: 't', seconds: 300 },
   linux_ssh_enable: {},
-  qos_setup: { args: ['limit', 'bandwidth', '1000'] },
+  qos_setup: { showAll: true },
+  qos_class: { classIndex: 1, action: 'add', name: 'web' },
+  qos_type: { action: 'add', name: 'http', protocolType: 6, portRange: '80:80' },
+  qos_voip: { enabled: false },
   ipf_set: { action: 'callFilterSet', setNo: 1 },
   ipf_rule: { setNo: 1, ruleNo: 1, action: 'view' },
   ipf_flowtrack_set: { action: 'refresh' },
@@ -98,7 +101,7 @@ const WRITE_ARGS = {
   appqos_enable: { mode: 0 },
   msubnet_switch: { onoff: 'on' },
   vlan_on: {},
-  vrrp_enable: { onoff: 'on' },
+  vrrp_enable: { onOff: 'on' },
   csm_ucf: { action: 'show' },
   csm_appe_set: { index: 1, action: 'view', group: 'IM' },
   csm_wcf: { action: 'show' },
@@ -121,6 +124,10 @@ const WRITE_ARGS = {
   swm_alert: { action: 'show' },
   swm_log: { action: 'showFilter' },
   swm_snmp: { action: 'sys', mac: '001122334455' },
+  ldap_set: { option: 'enable', enabled: false },
+  ldap_user: { index: 1, action: 'view' },
+  hsportal_setup: { profile: 1, action: 'disable' },
+  tacacsplus_set: { action: 'enable', enabled: false },
 };
 
 function loadPassed() {
@@ -222,7 +229,7 @@ try {
       const db = JSON.parse(textOf(done));
       check(
         `write:${id}:execute`,
-        !isError(done) && (db.status === 'done' || db.status === 'commit_failed'),
+        !isError(done) && db.status === 'done',
         `cmd=${db.command ?? ''} status=${db.status ?? ''}`,
       );
     }

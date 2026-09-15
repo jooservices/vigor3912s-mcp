@@ -15,7 +15,7 @@ MCP tools / confirm / audit
 
 | Layer | Owns |
 | --- | --- |
-| MCP | Curated tool IDs (~217), confirm gate, human confirm UX, SQLite audit, env/config, hard blocklist + read allowlist policy |
+| MCP | Curated + sdk_void tools (~300), confirm gate, human confirm UX, SQLite audit, env/config, hard blocklist + read allowlist policy |
 | SDK | DrayOS framing, typed operations, parsers, capability manifest, `execute` / `invoke` |
 | Transport adapter (`SshClientTransport`) | Map SDK `Transport.send(frame)` → ssh-client interactive shell |
 | ssh-client | Generic SSH only (prompt/pager/session) — no DrayOS domain |
@@ -58,7 +58,7 @@ Layer 2 — confirm tier (`auto` | `confirm` | `dual`):
 | Tier | Meaning |
 | --- | --- |
 | `auto` | No confirm (all reads; rare writes if explicitly marked) |
-| `confirm` | Preview + single-use token / human confirm (default writes) |
+| `confirm` | Preview + single-use Ed25519 signature / human approval (default writes) |
 | `dual` | Confirm + `acknowledge: true` (lockout / reboot / WAN down, …) |
 
 Owned in `src/commands/write-policy.ts`. SDK `classification` stays metadata.

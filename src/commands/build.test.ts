@@ -201,8 +201,8 @@ describe('registry -> MCP tool generation', () => {
     FakeVigorClient.script = { '': '' };
     const { mcp, server } = await startServer();
     const res = await mcp.callTool({
-      name: 'qos_setup',
-      arguments: { args: ['drop', 'all\rwan', 'disable', 'WAN1'] },
+      name: 'vpn_ovpn',
+      arguments: { param: 'mode 1\rwan disable WAN1' },
     });
     expect(isError(res)).toBe(true);
     const wrote = FakeVigorClient.instances.flatMap((c) => c.getStream()?.written ?? []);
@@ -214,7 +214,10 @@ describe('registry -> MCP tool generation', () => {
     FakeVigorClient.script = { '': '' };
     const { mcp, server } = await startServer();
     for (const bad of ['x; reboot', 'x & reboot', 'x`reboot`', 'x$reboot']) {
-      const res = await mcp.callTool({ name: 'qos_setup', arguments: { param: bad } });
+      const res = await mcp.callTool({
+        name: 'vpn_ovpn',
+        arguments: { param: bad },
+      });
       expect(isError(res), `should reject ${JSON.stringify(bad)}`).toBe(true);
     }
     const wrote = FakeVigorClient.instances.flatMap((c) => c.getStream()?.written ?? []);
@@ -227,11 +230,11 @@ describe('registry -> MCP tool generation', () => {
     const { mcp, server } = await startServer();
     const res = await mcp.callTool({
       name: 'qos_setup',
-      arguments: { args: ['limit', 'bandwidth', '1000'] },
+      arguments: { showAll: true },
     });
     const body = JSON.parse(textOf(res));
     expect(body.status).toBe('needs_confirmation');
-    expect(body.preview).toBe('qos setup limit bandwidth 1000');
+    expect(body.preview).toBe('qos setup -V');
     await server.close();
   });
 
