@@ -68,7 +68,8 @@ describe('WRITE_POLICY / ConfirmTier', () => {
 
   it('redacts free-form credential params via secretArgs', () => {
     expect(findCommand('user_account')?.secretArgs).toEqual(['param', 'userName']);
-    expect(findCommand('ldap_set')?.secretArgs).toEqual(['args']);
+    expect(findCommand('ldap_set')?.secretArgs).toEqual(['value']);
+    expect(findCommand('tacacsplus_set')?.secretArgs).toEqual(['secret']);
     expect(findCommand('vpn_setup')?.secretArgs).toEqual(['param']);
   });
 

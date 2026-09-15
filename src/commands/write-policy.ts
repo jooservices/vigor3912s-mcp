@@ -54,6 +54,13 @@ export function resolveConfirmTier(
  * Prefer listing lockout and secret-bearing tools here over burying flags
  * inside W(...) in the registry.
  */
+const EXTRA_WRITE_POLICY: Record<string, WritePolicy> = {};
+
+/** Register policy for generated tools (e.g. sdk_void destructive). */
+export function registerExtraWritePolicy(id: string, policy: WritePolicy): void {
+  EXTRA_WRITE_POLICY[id] = policy;
+}
+
 export const WRITE_POLICY: Readonly<Record<string, WritePolicy>> = {
   // --- sys ---
   sys_passwd: { confirm: 'dual', secretArgs: ['old', 'new'] },
@@ -100,11 +107,16 @@ export const WRITE_POLICY: Readonly<Record<string, WritePolicy>> = {
   swm_maintain: { confirm: 'dual' },
 
   // --- vpn / qos / dos ---
+  hsportal_setup: { secretArgs: ['appKey', 'appId'] },
+  ldap_set: { secretArgs: ['value'] },
+  tacacsplus_set: { secretArgs: ['secret'] },
   vpn_setup: { affectsNetwork: true, secretArgs: ['param'] },
   vpn_ovpn: { affectsNetwork: true, secretArgs: ['param'] },
   vpn_dial_out: { affectsNetwork: true },
   qos_setup: { affectsNetwork: true },
   qos_class: { affectsNetwork: true },
+  qos_type: { affectsNetwork: true },
+  qos_voip: { affectsNetwork: true },
   dos_activate: { affectsNetwork: true },
   dos_deactivate: { confirm: 'dual', affectsNetwork: true },
 
@@ -127,11 +139,8 @@ export const WRITE_POLICY: Readonly<Record<string, WritePolicy>> = {
   // --- user / directory (credentials often in free-form param) ---
   user_account: { confirm: 'dual', secretArgs: ['param', 'userName'] },
   user_edit: { secretArgs: ['param'] },
+  user_set: { secretArgs: ['param'] },
   user_setdefault: { confirm: 'dual' },
-  hsportal_setup: { secretArgs: ['args'] },
-  ldap_set: { secretArgs: ['args'] },
-  ldap_user: { secretArgs: ['args'] },
-  tacacsplus_set: { secretArgs: ['args'] },
 
   // --- misc network ---
   msubnet_switch: { confirm: 'dual', affectsNetwork: true },
@@ -143,7 +152,8 @@ export function applyWritePolicy<T extends { id: string; kind: string }>(
   cmd: T,
 ): T & ResolvedToolPolicy {
   const kind = cmd.kind === 'write' ? 'write' : 'read';
-  const policy = kind === 'write' ? WRITE_POLICY[cmd.id] : undefined;
+  const policy =
+    kind === 'write' ? (WRITE_POLICY[cmd.id] ?? EXTRA_WRITE_POLICY[cmd.id]) : undefined;
   const confirm = resolveConfirmTier(kind, policy);
   const { confirm: _c, ...rest } = policy ?? {};
   return {

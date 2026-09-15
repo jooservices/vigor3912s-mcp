@@ -40,6 +40,35 @@ describe('SshClientTransport', () => {
     ).rejects.toMatchObject({ code: 'closed', message: 'transport is closed' });
   });
 
+  it('rejects ensureConnected after close', async () => {
+    const transport = makeTransport();
+    await transport.close('test');
+    await expect(transport.ensureConnected()).rejects.toMatchObject({
+      code: 'closed',
+      message: 'transport is closed',
+    });
+  });
+
+  it('clears timing after a failed send', async () => {
+    FakeSshClient.script['sys version'] = 'ok';
+    const transport = makeTransport();
+    await transport.send(
+      { command: 'sys version' } as never,
+      { commandTimeoutMs: 1000, maxOutputBytes: 1000 } as never,
+      new AbortController().signal,
+    );
+    expect(transport.lastCommandTiming).not.toBeNull();
+    FakeSshClient.errors['sys version'] = new FakeSshClientError('timeout', 'slow');
+    await expect(
+      transport.send(
+        { command: 'sys version' } as never,
+        { commandTimeoutMs: 1000, maxOutputBytes: 1000 } as never,
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ code: 'timeout' });
+    expect(transport.lastCommandTiming).toBeNull();
+  });
+
   it('maps unknown Error on connect to connect', async () => {
     FakeSshClient.connectError = new Error('dns fail') as FakeSshClientError;
     await expect(makeTransport().ensureConnected()).rejects.toMatchObject({

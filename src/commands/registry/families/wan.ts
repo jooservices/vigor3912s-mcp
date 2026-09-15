@@ -102,8 +102,15 @@ export const wanFamily: FamilyDef = {
       'wan',
       (a) => {
         const prefix = `wan vlan wan ${String(a.wan)}`;
-        if (a.action === 'tag') return `${prefix} tag ${String(a.tagValue)}`;
-        if (a.action === 'state') return `${prefix} ${a.enabled ? 'enable' : 'disable'}`;
+        if (a.action === 'tag') {
+          if (a.tagValue == null) throw new Error('tagValue is required for vlan tag');
+          return `${prefix} tag ${String(a.tagValue)}`;
+        }
+        if (a.action === 'state') {
+          if (a.enabled == null) throw new Error('enabled is required for vlan state');
+          return `${prefix} ${a.enabled ? 'enable' : 'disable'}`;
+        }
+        if (a.priority == null) throw new Error('priority is required for vlan priority');
         return `${prefix} pri ${String(a.priority)}`;
       },
       {

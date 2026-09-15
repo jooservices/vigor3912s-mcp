@@ -32,7 +32,11 @@ export const haFamily: FamilyDef = {
       (a) => `ha set ${(a.args as string[]).join(' ')}`,
       {
         args: z
-          .array(safeText())
+          .array(
+            safeText().refine((token) => !/\s/.test(token), {
+              message: 'ha set arguments must contain exactly one CLI token',
+            }),
+          )
           .min(1)
           .refine(
             (tokens) =>

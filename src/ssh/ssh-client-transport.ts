@@ -64,6 +64,9 @@ export class SshClientTransport implements Transport {
   }
 
   async ensureConnected(): Promise<void> {
+    if (!this.open) {
+      throw new VigorCommandError('closed', 'transport is closed');
+    }
     try {
       await this.ssh.connect();
     } catch (err) {
@@ -94,6 +97,7 @@ export class SshClientTransport implements Transport {
       };
       return { stdout: result.stdout, stderr: '' };
     } catch (err) {
+      this.timing = null;
       throw mapTransportError(err);
     }
   }

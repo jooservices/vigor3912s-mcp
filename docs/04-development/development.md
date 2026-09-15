@@ -7,7 +7,7 @@ src/
   index.ts            MCP server entry (buildServer + stdio)
   config.ts           env loading/validation
   commands/
-    registry/         curated MCP tool catalog (~217 tools / 42 families)
+    registry/         curated MCP tool catalog + auto sdk_void coverage
     build.ts          catalog → MCP tool registration
     write-executor.ts confirm tier → execute → commit → audit
     write-policy.ts   Layer 2 confirm tiers (auto/confirm/dual)
@@ -30,8 +30,8 @@ tools/
 ## Wire path
 
 ```text
-MCP tools / confirm / audit
-  → SdkVigorClient (allowlist, blocklist, authorize, confirm tiers)
+MCP tools / confirm tiers / audit
+  → SdkVigorClient (allowlist, blocklist, authorize)
       → vigor3912s-sdk (invoke for zero-arg mapped ops, else execute)
           → SshClientTransport → ssh-client → router
 ```

@@ -42,11 +42,12 @@ import { ldapFamily } from './families/ldap.js';
 import { tacacsplusFamily } from './families/tacacsplus.js';
 import { portmaptimeFamily } from './families/portmaptime.js';
 import { swmFamily } from './families/swm.js';
+import { buildSdkVoidFamily } from './families/sdk-void.js';
 
 export type { CommandDef, CommandKind, FamilyDef } from './types.js';
 
-/** Full command registry, built from live recon (fw 4.4.7_RC2) + command map. */
-export const REGISTRY: FamilyDef[] = [
+/** Curated MCP catalog (hand-shaped args). */
+const CURATED_REGISTRY: FamilyDef[] = [
   showFamily,
   sysFamily,
   wanFamily,
@@ -91,16 +92,19 @@ export const REGISTRY: FamilyDef[] = [
   swmFamily,
 ];
 
+/** Full command registry: curated families + auto void SDK coverage. */
+export const REGISTRY: FamilyDef[] = [...CURATED_REGISTRY, buildSdkVoidFamily(CURATED_REGISTRY)];
+
 export function allCommands(): CommandDef[] {
   return REGISTRY.flatMap((f) => f.commands).map(applyWritePolicy);
 }
 
 export function readCommands(): CommandDef[] {
-  return allCommands().filter((c) => c.kind === "read");
+  return allCommands().filter((c) => c.kind === 'read');
 }
 
 export function writeCommands(): CommandDef[] {
-  return allCommands().filter((c) => c.kind === "write");
+  return allCommands().filter((c) => c.kind === 'write');
 }
 
 export function findCommand(id: string): CommandDef | undefined {
