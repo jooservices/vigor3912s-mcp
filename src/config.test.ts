@@ -51,6 +51,17 @@ describe('loadConfig', () => {
     expect(base({ EXPOSE_TOOLS: 'all' }).exposeTools).toEqual([]);
   });
 
+  it('accepts an explicit EXPOSE_TOOLS id list', () => {
+    expect(base({ EXPOSE_TOOLS: 'wan_status, show_status' }).exposeTools).toEqual([
+      'wan_status',
+      'show_status',
+    ]);
+  });
+
+  it('rejects schema-invalid config', () => {
+    expect(() => base({ VIGOR_PORT: 'not-a-number' })).toThrow(/Invalid VIGOR_/);
+  });
+
   it('requires approve pubkey when not read-only', () => {
     expect(() =>
       loadConfig({

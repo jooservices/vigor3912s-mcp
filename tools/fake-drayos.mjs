@@ -29,11 +29,19 @@ const BANNER = '\r\n\r\nType ? for command help\r\n\r\n' + PROMPT;
 export function buildResponseMap() {
   const map = new Map();
   for (const c of readCommands()) {
-    const cli = c.render({});
-    map.set(cli, `${c.id}: fake read output\nMore fake detail for ${cli}`);
+    try {
+      const cli = c.render({});
+      map.set(cli, `${c.id}: fake read output\nMore fake detail for ${cli}`);
+    } catch {
+      // Parameterized reads need args; e2e supplies them and the fallback below answers.
+    }
   }
   for (const c of writeCommands()) {
-    map.set(c.render({}), '% ok');
+    try {
+      map.set(c.render({}), '% ok');
+    } catch {
+      // Parameterized writes are covered by the unknown-command fallback.
+    }
   }
   map.set('sys commit', '% committed');
   map.set('', BANNER);
@@ -104,8 +112,8 @@ export async function startFakeDrayos(opts = {}) {
                 continue;
               }
               received.push(line);
-              const output = respondFor(line) ?? responses.get(line);
-              const body = output ?? `% no fake response for: ${line}`;
+              const output = respondFor(line) ?? responses.get(line) ?? '% ok';
+              const body = output;
               stream.write(`\r\n${line}\r\n${body}\r\n${PROMPT}`);
             }
           });

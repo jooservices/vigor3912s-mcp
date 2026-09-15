@@ -34,6 +34,19 @@ describe('isAllowedReadCommand', () => {
     expect(isAllowedReadCommand('ha status')).toBe(false);
   });
 
+  it('allows optional-group and enum-parameterized reads', () => {
+    expect(isAllowedReadCommand('csm appe show')).toBe(true);
+    expect(isAllowedReadCommand('csm appe show -a')).toBe(true);
+    expect(isAllowedReadCommand('csm appe show -i')).toBe(true);
+    expect(isAllowedReadCommand('csm appe show -p')).toBe(true);
+    expect(isAllowedReadCommand('csm appe show -t')).toBe(true);
+    expect(isAllowedReadCommand('csm appe show -m')).toBe(true);
+    expect(isAllowedReadCommand('csm appe show -x')).toBe(false);
+    expect(isAllowedReadCommand('ipf flowtrack view -f')).toBe(true);
+    expect(isAllowedReadCommand('ipf flowtrack view -b')).toBe(true);
+    expect(isAllowedReadCommand('ipf flowtrack view')).toBe(false);
+  });
+
   it('rejects writes, injection, and hosts that Zod would reject', () => {
     for (const bad of [
       'sys commit',

@@ -19,6 +19,7 @@ describe('approve-crypto', () => {
     expect(verifyApprovalSignature(b64, sig, 'id1', 'nonce1', digest, 123)).toBe(true);
     expect(verifyApprovalSignature(keys.publicKeyPem, sig, 'id1', 'nonce1', digest, 123)).toBe(true);
     expect(verifyApprovalSignature(b64, sig, 'id1', 'nonce1', digest, 999)).toBe(false);
+    expect(verifyApprovalSignature(b64, '', 'id1', 'nonce1', digest, 123)).toBe(false);
     expect(verifyApprovalSignature('not-a-key', sig, 'id1', 'nonce1', digest, 123)).toBe(false);
   });
 });

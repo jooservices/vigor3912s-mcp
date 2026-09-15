@@ -55,6 +55,8 @@ const READ_ARGS = (id) => {
   if (id === 'sys_health') return { metric: 'cpu_usage' };
   if (id === 'ha_show') return { section: 'generalSetup' };
   if (id === 'ha_status') return { scope: 'localRouter', detailLevel: 0 };
+  if (id === 'ipf_flowtrack_view') return { mode: 'sessions' };
+  if (id === 'csm_appe_show') return { group: 'all' };
   return {};
 };
 
