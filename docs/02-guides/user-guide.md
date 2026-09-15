@@ -73,21 +73,17 @@ CLI command and a confirmation message to present to you:
 }
 ```
 
-**Step 2 — approve.** You tell the assistant to proceed ("yes").
+**Step 2 — approve.** Sign the pending write outside the model:
 
-- **Default** (`VIGOR_HUMAN_CONFIRM=false`): the assistant then calls the tool
-  again with the `confirm_token` from the preview.
-- **Human-confirm** (`VIGOR_HUMAN_CONFIRM=true`): the token is hidden. You must
-  approve **and** provide your **confirmation code**
-  (`VIGOR_CONFIRM_PASSPHRASE` on the server). Without it, the write cannot run:
-
-```json
-{ "wan": 3, "confirmation_id": "a41f", "user_code": "<your-code>" }
+```bash
+node tools/approve.mjs <confirmation_id>
 ```
 
-If the write is flagged **dangerous**, approval also requires
+Paste the printed `signature` into the next tool call (same args +
+`confirmation_id` + `signature`). Dual-tier writes also need
 `"acknowledge": true`.
 
+The model cannot forge a valid signature without your private key.
 The result reports the change, a **before/after snapshot** (when a snapshot
 read is defined), and the `sys commit` outcome.
 

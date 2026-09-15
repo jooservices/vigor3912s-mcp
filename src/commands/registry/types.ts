@@ -1,4 +1,5 @@
 import type { ZodRawShape } from 'zod';
+import type { ConfirmTier } from '../write-policy.js';
 
 export type CommandKind = 'read' | 'write';
 
@@ -11,6 +12,11 @@ export interface CommandDef {
   render: (args: Record<string, unknown>) => string;
   /** zod schema for tool arguments (may be empty object for no-arg commands). */
   args: ZodRawShape;
+  /**
+   * MCP confirm tier (Layer 2). Reads resolve to `auto`; writes default
+   * `confirm` unless write-policy sets `dual` (or rarely `auto`).
+   */
+  confirm?: ConfirmTier;
   /** Whether this command changes network-affecting state (extra warning). */
   affectsNetwork?: boolean;
   /** Optional formatter to structure the raw CLI output (falls back to raw). */
@@ -19,7 +25,10 @@ export interface CommandDef {
   snapshotRead?: string;
   /** Arg keys whose values must be redacted in logs (passwords, secrets). */
   secretArgs?: string[];
-  /** High-risk write: requires `acknowledge: true` on the confirm call. */
+  /**
+   * Compatibility alias for `confirm === 'dual'`.
+   * Dual-confirm writes require `acknowledge: true` on the confirm call.
+   */
   dangerous?: boolean;
   /** Do not auto-run `sys commit` after this write (e.g. reboot, test mail). */
   skipCommit?: boolean;

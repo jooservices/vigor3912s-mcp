@@ -32,8 +32,6 @@ export interface RegisterOptions {
   store: LogStore;
   readOnly?: boolean;
   autoCommit?: boolean;
-  humanConfirm?: boolean;
-  confirmPassphrase?: string;
   exposeTools?: string[];
   disabledTools?: string[];
   toolOutputLimit?: number;
@@ -106,24 +104,19 @@ function registerWrite(
   store: LogStore,
   cmd: CommandDef,
   autoCommit: boolean,
-  humanConfirm: boolean,
-  confirmPassphrase: string | undefined,
 ): void {
   const schema: ZodRawShape = {
     ...cmd.args,
-    confirm_token: z.string().optional(),
     confirmation_id: z.string().optional(),
-    user_code: z.string().optional(),
+    signature: z.string().optional(),
   };
-  if (cmd.dangerous) schema.acknowledge = z.boolean().optional();
+  if (cmd.confirm === 'dual') schema.acknowledge = z.boolean().optional();
 
-  server.tool(cmd.id, `${cmd.desc} (write — requires confirmation)`, schema, async (args: Record<string, unknown>) => {
+  server.tool(cmd.id, `${cmd.desc} (write — requires signed approval)`, schema, async (args: Record<string, unknown>) => {
     const body = await executeWrite(cmd, args, client, {
       gate,
       store,
       autoCommit,
-      humanConfirm,
-      confirmPassphrase,
     });
     return { content: [{ type: 'text' as const, text: text(body) }] };
   });
@@ -133,10 +126,9 @@ export function registerAllTools(server: McpServer, client: VigorClient, opts: R
   const { gate, store } = opts;
   const outputLimit = opts.toolOutputLimit ?? 16000;
   const autoCommit = opts.autoCommit ?? true;
-  const humanConfirm = opts.humanConfirm ?? false;
   for (const cmd of allCommands()) {
     if (!isToolEnabled(cmd, opts)) continue;
     if (cmd.kind === 'read') registerRead(server, client, store, cmd, outputLimit);
-    else registerWrite(server, client, gate, store, cmd, autoCommit, humanConfirm, opts.confirmPassphrase);
+    else registerWrite(server, client, gate, store, cmd, autoCommit);
   }
 }

@@ -3,6 +3,7 @@ import type { VigorClient } from '../ssh/client.js';
 import { ConfirmError, type ConfirmGate } from '../tools/confirm-gate.js';
 import type { CommandDef } from './registry/index.js';
 import { findCommand } from './registry/index.js';
+import { isRouterCliFailure } from './router-cli-result.js';
 
 const iso = (ms: number): string => new Date(ms).toISOString();
 
@@ -34,7 +35,7 @@ async function snapshot(client: VigorClient, snapshotRead: string | undefined): 
   try {
     return await client.runCommand(cmd.render({}));
   } catch {
-    return null; // snapshot is best-effort; never fail the write for it
+    return null;
   }
 }
 
@@ -42,7 +43,10 @@ async function runCommit(client: VigorClient, store: LogStore): Promise<'ok' | '
   const started = Date.now();
   try {
     client.authorizeWrite('sys commit');
-    await client.runWriteCommand('sys commit');
+    const raw = await client.runWriteCommand('sys commit');
+    if (isRouterCliFailure(raw)) {
+      throw new Error(`router rejected commit: ${raw.trim().slice(0, 200)}`);
+    }
     store.request({
       toolId: 'sys_commit',
       kind: 'write',
@@ -67,43 +71,37 @@ async function runCommit(client: VigorClient, store: LogStore): Promise<'ok' | '
   }
 }
 
-function confirmMessage(commandLog: string, cmd: CommandDef, humanConfirm: boolean): string {
+function confirmMessage(commandLog: string, cmd: CommandDef): string {
   const impact = cmd.affectsNetwork ? 'network-affecting' : 'configuration change';
-  const danger = cmd.dangerous
-    ? '\n⚠️ **DANGEROUS** — this write can drop connectivity, lock out router management, or reboot the router.'
-    : '';
-  const base = [
-    '🛑 **Router write — your approval is required**',
+  const danger =
+    cmd.confirm === 'dual'
+      ? '\n⚠️ **DUAL confirm** — requires acknowledge: true in addition to a valid approval signature (can drop connectivity, lock out management, or reboot).'
+      : '';
+  return [
+    '🛑 **Router write — cryptographic approval required**',
     '',
     'The assistant wants to execute this on the router:',
     '',
     `\`\`\`\n${commandLog}\n\`\`\``,
     '',
-    `• Type: write / ${impact}`,
-    '• The confirmation is single-use and expires in 60 seconds.',
+    `• Type: write / ${impact} / confirm=${cmd.confirm ?? 'confirm'}`,
+    '• Sign the returned payload with your approve private key (`node tools/approve.mjs …`).',
+    '• The signature is single-use and bound to this exact command digest (expires in 60 seconds).',
     danger,
+    '',
+    'Reply is not enough — paste the signature into the next tool call as `signature`.',
   ].join('\n');
-  if (humanConfirm) {
-    return (
-      base +
-      '\n\nReply with **yes** and your **confirmation code** to approve — the code is the value of `VIGOR_CONFIRM_PASSPHRASE` configured on the server. Without it, the write cannot run.'
-    );
-  }
-  return base + '\n\nReply with **yes** to approve.';
 }
 
 export interface ExecuteWriteOptions {
   gate: ConfirmGate;
   store: LogStore;
   autoCommit: boolean;
-  humanConfirm: boolean;
-  confirmPassphrase?: string;
 }
 
 /**
  * Confirm → snapshot → execute → commit → audit for one write tool call.
- * Transport-agnostic: returns a JSON-serializable body, or throws on deny/error
- * (same contract the MCP adapter previously used).
+ * Transport-agnostic: returns a JSON-serializable body, or throws on deny/error.
  */
 export async function executeWrite(
   cmd: CommandDef,
@@ -111,21 +109,33 @@ export async function executeWrite(
   client: VigorClient,
   opts: ExecuteWriteOptions,
 ): Promise<Record<string, unknown>> {
-  const { gate, store, autoCommit, humanConfirm, confirmPassphrase } = opts;
-  const { confirm_token, confirmation_id, user_code, acknowledge, ...rest } = args;
-  const token = typeof confirm_token === 'string' ? confirm_token : undefined;
+  return opts.gate.runExclusive(() => executeWriteLocked(cmd, args, client, opts));
+}
+
+async function executeWriteLocked(
+  cmd: CommandDef,
+  args: Record<string, unknown>,
+  client: VigorClient,
+  opts: ExecuteWriteOptions,
+): Promise<Record<string, unknown>> {
+  const { gate, store, autoCommit } = opts;
+  const { confirmation_id, signature, acknowledge, confirm_token, user_code, ...rest } = args;
+  void confirm_token;
+  void user_code;
   const cid = typeof confirmation_id === 'string' ? confirmation_id : undefined;
-  const code = typeof user_code === 'string' ? user_code : undefined;
+  const sig = typeof signature === 'string' ? signature : undefined;
   const secretArgs = cmd.secretArgs ?? [];
   const command = cmd.render(rest);
   const commandLog = redactCommand(command, rest, secretArgs);
   const argsLog = redactArgs(rest, secretArgs);
   const started = Date.now();
-  const message = confirmMessage(commandLog, cmd, humanConfirm);
+  const message = confirmMessage(commandLog, cmd);
+  // Writes never use `auto` as a confirm bypass (reads never reach here).
+  const tier = cmd.confirm === 'auto' ? 'confirm' : (cmd.confirm ?? 'confirm');
 
-  const hasConfirmation = token !== undefined || cid !== undefined;
+  const hasConfirmation = cid !== undefined || sig !== undefined;
   if (!hasConfirmation) {
-    const { token: newToken, confirmationId } = gate.create(cmd.id, command);
+    const created = gate.create(cmd.id, command, commandLog);
     store.request({
       toolId: cmd.id,
       kind: 'write',
@@ -146,26 +156,28 @@ export async function executeWrite(
     return {
       status: 'needs_confirmation',
       preview: commandLog,
+      confirmation_id: created.confirmationId,
+      nonce: created.nonce,
+      command_digest: created.commandDigest,
+      expires_at: created.expiresAt,
+      sign_payload: `${created.confirmationId}\n${created.nonce}\n${created.commandDigest}\n${created.expiresAt}`,
       affects_network: cmd.affectsNetwork ?? false,
-      dangerous: cmd.dangerous ?? false,
-      human_confirm: humanConfirm,
+      confirm_tier: tier,
+      dangerous: tier === 'dual',
       message,
-      ...(humanConfirm
-        ? {
-            confirmation_id: confirmationId,
-            note: 'Present the message to the user; the confirm call needs confirmation_id + user_code.',
-          }
-        : {
-            confirm_token: newToken,
-            note: 'Call this tool again with the same arguments and confirm_token to execute.',
-          }),
+      note: 'Sign sign_payload with your approve key (tools/approve.mjs), then call again with confirmation_id + signature.',
     };
   }
 
-  // Dangerous writes need an explicit acknowledge (checked BEFORE consuming
-  // the confirmation so a failed acknowledge does not void it).
-  if (cmd.dangerous && acknowledge !== true) {
-    const msg = 'dangerous write requires acknowledge: true';
+  if (!cid || !sig) {
+    throw new ConfirmError(
+      'invalid_token',
+      'approval requires confirmation_id and signature (Ed25519 over sign_payload)',
+    );
+  }
+
+  if (tier === 'dual' && acknowledge !== true) {
+    const msg = 'dual-confirm write requires acknowledge: true';
     store.request({
       toolId: cmd.id,
       kind: 'write',
@@ -188,95 +200,30 @@ export async function executeWrite(
     throw new Error(msg);
   }
 
-  // Human-confirm mode: token is hidden; the call must present the
-  // confirmation_id and the correct user_code (the human's passphrase).
-  if (humanConfirm) {
-    if (!cid || !code) {
-      throw new ConfirmError('invalid_token', 'human confirmation requires confirmation_id and user_code');
-    }
-    const intent = gate.getByConfirmationId(cid);
-    if (!intent) {
-      throw new ConfirmError('invalid_token', 'confirmation not found or expired');
-    }
-    try {
-      gate.verifyUserCode(cid, code, confirmPassphrase ?? '');
-    } catch (e) {
-      const ec = errCode(e) ?? 'bad_user_code';
-      const msg = e instanceof Error ? e.message : 'wrong confirmation code';
-      store.request({
-        toolId: cmd.id,
-        kind: 'write',
-        command: commandLog,
-        argsJson: argsLog,
-        outcome: 'denied',
-        errorCode: ec === 'rate_limited' ? 'rate_limited' : 'bad_user_code',
-        errorMsg: msg,
-        durationMs: Date.now() - started,
-      });
-      store.writeAudit({
-        requestId: null,
-        toolId: cmd.id,
-        command: commandLog,
-        status: 'denied',
-        success: null,
-        errorCode: ec === 'rate_limited' ? 'rate_limited' : 'bad_user_code',
-        errorMsg: msg,
-      });
-      throw e;
-    }
-    try {
-      gate.validate(intent.token, command);
-    } catch (e) {
-      const ec = errCode(e) ?? 'denied';
-      store.request({
-        toolId: cmd.id,
-        kind: 'write',
-        command: commandLog,
-        argsJson: argsLog,
-        outcome: 'denied',
-        errorCode: ec,
-        errorMsg: e instanceof Error ? e.message : String(e),
-        durationMs: Date.now() - started,
-      });
-      store.writeAudit({
-        requestId: null,
-        toolId: cmd.id,
-        command: commandLog,
-        status: auditDenyStatus(ec),
-        success: null,
-        errorCode: ec,
-        errorMsg: e instanceof Error ? e.message : String(e),
-      });
-      throw e;
-    }
-  } else if (token === undefined) {
-    throw new ConfirmError('invalid_token', 'confirmation token required');
-  } else {
-    try {
-      gate.validate(token, command);
-    } catch (e) {
-      const denyCode = errCode(e) ?? 'denied';
-      store.request({
-        toolId: cmd.id,
-        kind: 'write',
-        command: commandLog,
-        argsJson: argsLog,
-        outcome: 'denied',
-        errorCode: denyCode,
-        errorMsg: e instanceof Error ? e.message : String(e),
-        durationMs: Date.now() - started,
-      });
-      store.writeAudit({
-        requestId: null,
-        toolId: cmd.id,
-        command: commandLog,
-        status: auditDenyStatus(denyCode),
-        success: null,
-        errorCode: denyCode,
-        errorMsg: e instanceof Error ? e.message : String(e),
-      });
-      throw e;
-    }
+  try {
+    gate.consumeSigned(cid, command, sig);
+  } catch (e) {
+    const denyCode = errCode(e) ?? 'denied';
+    store.request({
+      toolId: cmd.id,
+      kind: 'write',
+      command: commandLog,
+      argsJson: argsLog,
+      outcome: 'denied',
+      errorCode: denyCode,
+      errorMsg: e instanceof Error ? e.message : String(e),
+      durationMs: Date.now() - started,
+    });
+    store.writeAudit({
+      requestId: null,
+      toolId: cmd.id,
+      command: commandLog,
+      status: auditDenyStatus(denyCode),
+      success: null,
+      errorCode: denyCode,
+      errorMsg: e instanceof Error ? e.message : String(e),
+    });
+    throw e;
   }
 
   const before = await snapshot(client, cmd.snapshotRead);
@@ -284,6 +231,11 @@ export async function executeWrite(
   try {
     client.authorizeWrite(command);
     raw = await client.runWriteCommand(command);
+    if (isRouterCliFailure(raw)) {
+      throw Object.assign(new Error(`router rejected command: ${raw.trim().slice(0, 200)}`), {
+        code: 'router_error',
+      });
+    }
   } catch (e) {
     const ended = Date.now();
     store.request({
@@ -315,14 +267,18 @@ export async function executeWrite(
   const after = await snapshot(client, cmd.snapshotRead);
   const commitStatus = autoCommit && !cmd.skipCommit ? await runCommit(client, store) : 'skipped';
   const ended = Date.now();
+  const success = commitStatus !== 'failed';
+  const storeOutput = secretArgs.length === 0 ? raw : undefined;
   store.request({
     toolId: cmd.id,
     kind: 'write',
     command: commandLog,
     argsJson: argsLog,
-    outcome: 'ok',
+    outcome: success ? 'ok' : 'error',
+    errorCode: success ? undefined : 'commit_failed',
+    errorMsg: success ? undefined : 'sys commit failed after write',
     durationMs: ended - started,
-    output: raw,
+    output: storeOutput,
     requestedAt: iso(started),
     respondedAt: iso(ended),
     ...writeTiming,
@@ -332,12 +288,24 @@ export async function executeWrite(
     requestId: row,
     toolId: cmd.id,
     command: commandLog,
-    status: 'executed',
-    success: true,
+    status: success ? 'executed' : 'failed',
+    success,
     beforeSnapshot: before ?? undefined,
     afterSnapshot: after ?? undefined,
     commitStatus,
+    errorCode: success ? undefined : 'commit_failed',
+    errorMsg: success ? undefined : 'sys commit failed after write',
   });
+  if (!success) {
+    return {
+      status: 'commit_failed',
+      command: commandLog,
+      before: before ?? undefined,
+      after: after ?? undefined,
+      output: raw,
+      commit: commitStatus,
+    };
+  }
   return {
     status: 'done',
     command: commandLog,

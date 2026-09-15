@@ -1,12 +1,14 @@
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { digestCommand, verifyApprovalSignature } from './approve-crypto.js';
 
 export type ConfirmErrorCode =
   | 'invalid_token'
   | 'token_used'
   | 'token_expired'
   | 'mismatch'
+  | 'bad_signature'
   | 'rate_limited';
 
 export class ConfirmError extends Error {
@@ -19,51 +21,70 @@ export class ConfirmError extends Error {
 }
 
 export interface WriteIntent {
-  token: string;
   confirmationId: string;
   toolId: string;
-  command: string;
+  /** SHA-256 hex of the exact CLI that will run (secrets hashed, not stored). */
+  commandDigest: string;
+  /** Human-readable preview with secrets redacted. */
+  commandPreview: string;
+  nonce: string;
   createdAt: number;
   expiresAt: number;
   used: boolean;
 }
 
-/** Public view of a pending intent (no token) for the human-confirm CLI. */
+/** Public view of a pending intent for the approve CLI / model preview. */
 export interface PendingIntentView {
   confirmationId: string;
   toolId: string;
-  command: string;
+  commandDigest: string;
+  commandPreview: string;
+  nonce: string;
   createdAt: number;
   expiresAt: number;
 }
 
+export interface CreateIntentResult {
+  confirmationId: string;
+  nonce: string;
+  commandDigest: string;
+  expiresAt: number;
+}
+
 /**
- * Two-step confirmation gate for write commands.
+ * Signature-gated confirmation for write commands.
  *
- * Default behavior: a write tool creates an intent and returns a short-lived,
- * single-use token bound to the exact rendered command; the confirmed second
- * call must present that token and reconstruct the identical command.
- *
- * Human-confirm mode (`pendingFile` set): intents are persisted to a JSON file
- * and the token is NOT returned to the model. A human retrieves and approves
- * it via the CLI (`node tools/confirm.mjs <confirmationId>`).
+ * Preview creates a pending intent (digest + redacted preview + nonce).
+ * Execute requires `confirmation_id` + Ed25519 `signature` over the canonical
+ * payload; the model never receives a reusable approve secret.
  */
 export class ConfirmGate {
   private intents = new Map<string, WriteIntent>();
-  /** tokens that were already consumed (kept until their expiry for audit). */
+  /** Consumed confirmation ids kept until expiry for replay detection. */
   private used = new Map<string, number>();
-  /** Wrong human-confirm passphrase attempts keyed by confirmationId. */
-  private codeFailures = new Map<string, { count: number; lockedUntil: number }>();
+  private chain: Promise<unknown> = Promise.resolve();
 
   constructor(
     private readonly ttlMs = 60000,
     private readonly maxPending = 100,
     private readonly pendingFile?: string,
-    private readonly maxCodeFailures = 5,
-    private readonly codeLockMs = 60_000,
+    private readonly approvePublicKey?: string,
   ) {}
 
-  create(toolId: string, command: string): { token: string; confirmationId: string } {
+  /**
+   * Serialize write confirm→execute workflows so snapshot/write/commit
+   * cannot interleave across concurrent tool calls.
+   */
+  runExclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.chain.then(fn, fn);
+    this.chain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  create(toolId: string, command: string, commandPreview: string): CreateIntentResult {
     this.prune();
     if (this.intents.size >= this.maxPending) {
       throw new ConfirmError(
@@ -71,120 +92,103 @@ export class ConfirmGate {
         `too many pending confirmations (max ${this.maxPending}); confirm or wait`,
       );
     }
-    const token = randomBytes(16).toString('hex');
-    // 8 bytes → 16 hex chars (was 3 bytes / 6 hex).
     let confirmationId = randomBytes(8).toString('hex');
-    while (this.getByConfirmationId(confirmationId) !== undefined) {
+    while (this.intents.has(confirmationId) || this.used.has(confirmationId)) {
       confirmationId = randomBytes(8).toString('hex');
     }
     const now = Date.now();
-    this.intents.set(token, {
-      token,
+    const nonce = randomBytes(16).toString('hex');
+    const commandDigest = digestCommand(command);
+    const expiresAt = now + this.ttlMs;
+    this.intents.set(confirmationId, {
       confirmationId,
       toolId,
-      command,
+      commandDigest,
+      commandPreview,
+      nonce,
       createdAt: now,
-      expiresAt: now + this.ttlMs,
+      expiresAt,
       used: false,
     });
     this.persist();
-    return { token, confirmationId };
+    return { confirmationId, nonce, commandDigest, expiresAt };
   }
 
-  validate(token: string, command: string): void {
-    const usedExpiry = this.used.get(token);
-    if (usedExpiry !== undefined) {
-      if (Date.now() > usedExpiry) {
-        this.used.delete(token);
-      } else {
-        throw new ConfirmError('token_used', 'confirmation token has already been used');
-      }
-    }
-    const intent = this.intents.get(token);
-    if (!intent) throw new ConfirmError('invalid_token', 'confirmation token not found');
-    if (intent.used) throw new ConfirmError('token_used', 'confirmation token has already been used');
-    if (Date.now() > intent.expiresAt) {
-      this.intents.delete(token);
-      this.persist();
-      throw new ConfirmError('token_expired', 'confirmation token has expired');
-    }
-    if (intent.command !== command) {
-      throw new ConfirmError('mismatch', 'confirmed command does not match the change');
-    }
-    intent.used = true;
-    this.intents.delete(token);
-    this.used.set(token, Date.now() + this.ttlMs);
-    this.persist();
-  }
-
-  /** Look up a pending intent by its short confirmation id. */
   getByConfirmationId(id: string): WriteIntent | undefined {
     this.prune();
-    for (const intent of this.intents.values()) {
-      if (intent.confirmationId === id) return intent;
-    }
-    return undefined;
+    return this.intents.get(id);
   }
 
   /**
-   * Timing-safe passphrase check with per-confirmationId rate limiting.
-   * Throws ConfirmError on mismatch / lockout; clears failures on success.
+   * Verify signature + command digest, then consume the intent (single-use).
    */
-  verifyUserCode(confirmationId: string, provided: string, expected: string): void {
-    const now = Date.now();
-    const state = this.codeFailures.get(confirmationId) ?? { count: 0, lockedUntil: 0 };
-    if (now < state.lockedUntil) {
-      throw new ConfirmError(
-        'rate_limited',
-        'too many wrong confirmation codes; try again later',
-      );
+  consumeSigned(confirmationId: string, command: string, signature: string): void {
+    if (!this.approvePublicKey) {
+      throw new ConfirmError('bad_signature', 'VIGOR_APPROVE_PUBKEY is not configured');
     }
-    const a = Buffer.from(provided);
-    const b = Buffer.from(expected);
-    let ok = false;
-    if (a.length === b.length) {
-      ok = timingSafeEqual(a, b);
-    } else if (a.length > 0) {
-      // Equal-time-ish reject when lengths differ (avoid leaking via early return only).
-      timingSafeEqual(a, a);
-    }
-    if (!ok) {
-      state.count += 1;
-      if (state.count >= this.maxCodeFailures) {
-        state.lockedUntil = now + this.codeLockMs;
-        state.count = 0;
-        this.codeFailures.set(confirmationId, state);
-        throw new ConfirmError(
-          'rate_limited',
-          'too many wrong confirmation codes; try again later',
-        );
+    const usedExpiry = this.used.get(confirmationId);
+    if (usedExpiry !== undefined) {
+      if (Date.now() > usedExpiry) {
+        this.used.delete(confirmationId);
+      } else {
+        throw new ConfirmError('token_used', 'confirmation has already been used');
       }
-      this.codeFailures.set(confirmationId, state);
-      throw new ConfirmError('invalid_token', 'wrong confirmation code');
     }
-    this.codeFailures.delete(confirmationId);
+    const intent = this.intents.get(confirmationId);
+    if (!intent) throw new ConfirmError('invalid_token', 'confirmation not found');
+    if (intent.used) throw new ConfirmError('token_used', 'confirmation has already been used');
+    if (Date.now() > intent.expiresAt) {
+      this.intents.delete(confirmationId);
+      this.persist();
+      throw new ConfirmError('token_expired', 'confirmation has expired');
+    }
+    const digest = digestCommand(command);
+    if (digest !== intent.commandDigest) {
+      throw new ConfirmError('mismatch', 'confirmed command does not match the change');
+    }
+    const ok = verifyApprovalSignature(
+      this.approvePublicKey,
+      signature,
+      intent.confirmationId,
+      intent.nonce,
+      intent.commandDigest,
+      intent.expiresAt,
+    );
+    if (!ok) {
+      throw new ConfirmError('bad_signature', 'approval signature is invalid');
+    }
+    intent.used = true;
+    this.intents.delete(confirmationId);
+    this.used.set(confirmationId, Date.now() + this.ttlMs);
+    this.persist();
   }
 
-  /** Pending intents without tokens (for the human-confirm CLI). */
   pendingViews(): PendingIntentView[] {
     this.prune();
     return [...this.intents.values()].map((i) => ({
       confirmationId: i.confirmationId,
       toolId: i.toolId,
-      command: i.command,
+      commandDigest: i.commandDigest,
+      commandPreview: i.commandPreview,
+      nonce: i.nonce,
       createdAt: i.createdAt,
       expiresAt: i.expiresAt,
     }));
   }
 
-  /** Load pending intents persisted by another process (e.g. the CLI). */
   static loadPending(file: string): PendingIntentView[] {
     try {
-      const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
       if (!Array.isArray(raw)) return [];
       return raw.filter(
-        (i) =>
-          i && typeof i.confirmationId === 'string' && typeof i.command === 'string',
+        (i): i is PendingIntentView =>
+          !!i &&
+          typeof i === 'object' &&
+          typeof (i as PendingIntentView).confirmationId === 'string' &&
+          typeof (i as PendingIntentView).commandDigest === 'string' &&
+          typeof (i as PendingIntentView).commandPreview === 'string' &&
+          typeof (i as PendingIntentView).nonce === 'string' &&
+          typeof (i as PendingIntentView).expiresAt === 'number',
       );
     } catch {
       return [];
@@ -195,24 +199,25 @@ export class ConfirmGate {
     if (!this.pendingFile) return;
     try {
       fs.mkdirSync(path.dirname(this.pendingFile), { recursive: true });
-      fs.writeFileSync(this.pendingFile, JSON.stringify(this.pendingViews(), null, 2) + '\n');
+      const body = JSON.stringify(this.pendingViews(), null, 2) + '\n';
+      fs.writeFileSync(this.pendingFile, body, { mode: 0o600 });
+      fs.chmodSync(this.pendingFile, 0o600);
     } catch {
       /* best-effort */
     }
   }
 
-  /** Remove expired intents and consumed tokens to bound memory. */
   prune(): void {
     const now = Date.now();
     let changed = false;
-    for (const [token, intent] of this.intents) {
+    for (const [id, intent] of this.intents) {
       if (now > intent.expiresAt) {
-        this.intents.delete(token);
+        this.intents.delete(id);
         changed = true;
       }
     }
-    for (const [token, expiry] of this.used) {
-      if (now > expiry) this.used.delete(token);
+    for (const [id, expiry] of this.used) {
+      if (now > expiry) this.used.delete(id);
     }
     if (changed) this.persist();
   }

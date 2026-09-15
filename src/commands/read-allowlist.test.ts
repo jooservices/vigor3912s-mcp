@@ -18,6 +18,22 @@ describe('isAllowedReadCommand', () => {
     expect(isAllowedReadCommand('ip6 tracert ::1')).toBe(true);
   });
 
+  it('allows sys_health only with documented metrics', () => {
+    expect(isAllowedReadCommand('sys health cpu_usage')).toBe(true);
+    expect(isAllowedReadCommand('sys health view')).toBe(true);
+    expect(isAllowedReadCommand('sys health')).toBe(false);
+    expect(isAllowedReadCommand('sys health evil')).toBe(false);
+  });
+
+  it('allows ha_show / ha_status exact documented forms', () => {
+    expect(isAllowedReadCommand('ha show -c')).toBe(true);
+    expect(isAllowedReadCommand('ha show -g')).toBe(true);
+    expect(isAllowedReadCommand('ha show')).toBe(false);
+    expect(isAllowedReadCommand('ha status -a 0')).toBe(true);
+    expect(isAllowedReadCommand('ha status -m 2')).toBe(true);
+    expect(isAllowedReadCommand('ha status')).toBe(false);
+  });
+
   it('rejects writes, injection, and hosts that Zod would reject', () => {
     for (const bad of [
       'sys commit',

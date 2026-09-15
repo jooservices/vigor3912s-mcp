@@ -1,14 +1,11 @@
 import { R } from '../builders.js';
 import type { FamilyDef } from '../types.js';
-import {
-  parseShowStatus,
-} from '../../../tools/parsers.js';
 
 export const showFamily: FamilyDef = {
     family: 'show',
     desc: 'Status and diagnostics views (read-only).',
     commands: [
-      R('show_status', 'show', 'show status', 'System uptime, LAN DNS, IP, per-WAN link status', parseShowStatus),
+      R('show_status', 'show', 'show status', 'System uptime, LAN DNS, IP, per-WAN link status'),
       R('show_lan', 'show', 'show lan', 'LAN/VLAN interfaces: IP, mask, DHCP pool, gateway'),
       R('show_dmz', 'show', 'show dmz', 'DMZ host configuration'),
       R('show_dns', 'show', 'show dns', 'DNS server settings per LAN'),
