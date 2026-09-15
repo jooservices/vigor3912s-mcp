@@ -17,7 +17,7 @@ operate the Vigor 3912S router.
 ```bash
 cp .env.example .env
 chmod 600 .env
-# edit .env: VIGOR_HOST, USER, PASSWORD, VIGOR_SSH_HOST_FINGERPRINT
+# edit .env: VIGOR_HOST, VIGOR_USER, VIGOR_PASSWORD, VIGOR_SSH_HOST_FINGERPRINT
 # EXPOSE_TOOLS=readonly recommended locally
 # For writes: node tools/approve-keygen.mjs → set VIGOR_APPROVE_PUBKEY
 npm install

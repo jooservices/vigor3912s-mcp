@@ -61,7 +61,8 @@ stays offline). Prefer `EXPOSE_TOOLS=readonly` unless writes are required.
   `safeText`.
 - **`sys commit` after a confirmed write** is authorized internally without a
   second approval signature. It only runs inside this process after a
-  successful gated write (or when `skipCommit` is set).
+  successful gated write when auto-commit is enabled and `skipCommit` is not
+  true.
 
 ## Dependency audit
 

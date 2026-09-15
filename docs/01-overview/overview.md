@@ -45,7 +45,7 @@ details.
 ## Quick start
 
 ```bash
-cp .env.example .env     # set VIGOR_HOST / USER / PASSWORD / SSH fingerprint
+cp .env.example .env     # set VIGOR_HOST / VIGOR_USER / VIGOR_PASSWORD / SSH fingerprint
 node tools/approve-keygen.mjs   # if you need writes
 chmod 600 .env
 npm install
