@@ -1,15 +1,12 @@
 #!/usr/bin/env node
 /**
- * Human-confirm helper: list pending router writes and inspect one by id.
+ * List pending signed-approval writes (preview only; no secrets).
  *
- * With VIGOR_HUMAN_CONFIRM=true the write tools hide the confirm token and
- * persist pending intents to `data/pending-confirms.json`. A human approves a
- * write by providing their confirmation code (VIGOR_CONFIRM_PASSPHRASE) in the
- * chat. This CLI lets the human verify what is pending before approving.
+ * Prefer `node tools/approve.mjs` to list + sign.
  *
  * Usage:
- *   node tools/confirm.mjs            # list all pending confirmations
- *   node tools/confirm.mjs <id>       # show the command for a pending id
+ *   node tools/confirm.mjs
+ *   node tools/confirm.mjs <confirmationId>
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,10 +29,10 @@ if (!id) {
   for (const p of pending) {
     const expiry = new Date(p.expiresAt).toISOString();
     console.log(`  ${p.confirmationId}  [${p.toolId}]  expires ${expiry}`);
-    console.log(`      ${p.command}`);
+    console.log(`      ${p.commandPreview}`);
   }
-  console.log('\nInspect one: node tools/confirm.mjs <id>');
-  console.log('To approve, tell the assistant your confirmation code (VIGOR_CONFIRM_PASSPHRASE).');
+  console.log('\nInspect: node tools/confirm.mjs <id>');
+  console.log('Sign:    node tools/approve.mjs <id>');
   process.exit(0);
 }
 
@@ -46,6 +43,8 @@ if (!found) {
 }
 const expiry = new Date(found.expiresAt).toISOString();
 console.log(`Confirmation ${found.confirmationId} [${found.toolId}] (expires ${expiry})\n`);
-console.log('This write will execute on the router:\n');
-console.log(`  ${found.command}\n`);
-console.log('If you approve, reply to the assistant with your confirmation code to run it.');
+console.log('Preview (redacted):\n');
+console.log(`  ${found.commandPreview}\n`);
+console.log(`digest: ${found.commandDigest}`);
+console.log(`nonce:  ${found.nonce}`);
+console.log('\nApprove with: node tools/approve.mjs ' + found.confirmationId);

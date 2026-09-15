@@ -33,8 +33,13 @@ project directory via `dotenv`).
 | --- | --- | --- |
 | `VIGOR_READ_ONLY` | `false` | `true` = write tools are **not registered** (monitoring only) |
 | `VIGOR_AUTO_COMMIT` | `true` | Run `sys commit` after a successful confirmed write (skipped for `skipCommit` commands) |
-| `VIGOR_HUMAN_CONFIRM` | `false` | `true` = every write requires a human: the confirm token is hidden and the human must provide the confirmation code |
-| `VIGOR_CONFIRM_PASSPHRASE` | *(unset)* | The confirmation code the human types to approve a write (required when `VIGOR_HUMAN_CONFIRM=true`, min 8 chars) |
+| `VIGOR_APPROVE_PUBKEY` | — (required unless read-only) | Ed25519 SPKI public key (PEM or base64 DER) verifying write signatures |
+| `VIGOR_APPROVE_PRIVKEY_FILE` | `data/keys/approve-private.pem` | Local private key path for `tools/approve.mjs` / e2e (not read by MCP server) |
+
+Boolean env flags accept `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`. Unknown values throw (fail closed).
+
+Generate a keypair: `node tools/approve-keygen.mjs` then set `VIGOR_APPROVE_PUBKEY` from the printed value.
+Sign a pending write: `node tools/approve.mjs <confirmationId>`.
 
 ## Tool exposure (`EXPOSE_TOOLS`)
 
@@ -77,8 +82,8 @@ VIGOR_LOG_DB=data/vigor3912s.db
 EXPOSE_TOOLS=readonly
 # VIGOR_READ_ONLY=true
 # VIGOR_AUTO_COMMIT=true
-# VIGOR_HUMAN_CONFIRM=false
-# VIGOR_CONFIRM_PASSPHRASE=change-me-strong-code
+# VIGOR_APPROVE_PUBKEY=<base64-or-pem from tools/approve-keygen.mjs>
+# VIGOR_APPROVE_PRIVKEY_FILE=data/keys/approve-private.pem
 # VIGOR_DISABLED_TOOLS=sys_reboot,testmail_send
 # VIGOR_TOOL_OUTPUT_LIMIT=16000
 # VIGOR_SSH_INSECURE_SKIP_VERIFY=true   # never on a live untrusted LAN

@@ -37,26 +37,24 @@ working directory = project dir. Tool ids match `docs/03-reference/commands.md`.
 - Read tools take an empty schema (except `ip_ping` / `ip_tracert` /
   `ip6_ping` / `ip6_tracert`, which take `{ host }`).
 - Write tools accept their command args plus:
-  - `confirm_token` (string, optional) — required on the confirm call.
-  - `acknowledge` (boolean, optional) — required for **dangerous** writes.
+  - `confirmation_id` (string, optional) — from the preview response.
+  - `signature` (string, optional) — Ed25519 signature over `sign_payload`.
+  - `acknowledge` (boolean, optional) — required for **dual** / dangerous writes.
 
 ## Write confirmation over MCP
 
 Two calls, same tool:
 
-1. **Preview** — call without a confirmation. Returns a preview + a `message`
-   to present to the human, plus either:
-   - `confirm_token` (default), or
-   - `confirmation_id` when `VIGOR_HUMAN_CONFIRM=true` (token hidden).
-2. **Confirm** — call again with the same args and:
-   - `confirm_token` (default), **or**
-   - `confirmation_id` + `user_code` (human-confirm mode; `user_code` must
-     equal `VIGOR_CONFIRM_PASSPHRASE`).
+1. **Preview** — call without approval fields. Returns a redacted preview,
+   `confirmation_id`, `nonce`, `command_digest`, `expires_at`, and
+   `sign_payload`.
+2. **Confirm** — sign `sign_payload` with your approve private key
+   (`node tools/approve.mjs …`), then call again with the same args plus
+   `confirmation_id` + `signature`. Dual-tier writes also need
+   `acknowledge: true`.
 
-Tokens are single-use and expire after 60s. In human-confirm mode the model
-cannot complete a write on its own — the human must provide the confirmation
-code. Dangerous writes additionally require `acknowledge: true`.
-
+Signatures are single-use and bound to the command digest (60s TTL). The model
+cannot complete a write without a human-produced signature.
 ## Read-only / exposure control
 
 The AI surface is controlled by **`EXPOSE_TOOLS`**:

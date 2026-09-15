@@ -2,9 +2,6 @@ import { z } from 'zod';
 import { R, W } from '../builders.js';
 import type { FamilyDef } from '../types.js';
 import {
-  parseDhcpStatus,
-} from '../../../tools/parsers.js';
-import {
   ipv4,
 } from '../../validators.js';
 
@@ -12,7 +9,7 @@ export const srvFamily: FamilyDef = {
     family: 'srv',
     desc: 'DHCP and NAT services.',
     commands: [
-      R('dhcp_status', 'srv', 'srv dhcp status', 'DHCP server status + lease/reservation table', parseDhcpStatus),
+      R('dhcp_status', 'srv', 'srv dhcp status', 'DHCP server status + lease/reservation table'),
       R('nat_view', 'srv', 'srv nat view', 'NAT configuration view'),
       W('dhcp_on', 'srv', () => 'srv dhcp on', {}, 'Enable DHCP server (requires reboot to apply)'),
       W('dhcp_off', 'srv', () => 'srv dhcp off', {}, 'Disable DHCP server (requires reboot to apply)'),

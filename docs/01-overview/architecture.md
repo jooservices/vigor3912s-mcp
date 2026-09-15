@@ -28,9 +28,9 @@ is in `src/commands/write-executor.ts`:
 
 - **Read tools** run the (verified) read command and return its output
   (structured when a parser exists; formatters receive args).
-- **Write tools** are two-step: first call returns a preview + `confirm_token`
-  (or `confirmation_id` in human-confirm mode); the confirm call executes.
-  Dangerous writes also require `acknowledge: true`.
+- **Write tools** are two-step: first call returns a redacted preview +
+  `confirmation_id` / `sign_payload`; the confirm call requires an Ed25519
+  `signature` (and `acknowledge: true` for dual-tier writes).
 
 ## Client interface (SDK-ready)
 

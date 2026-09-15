@@ -44,30 +44,30 @@ DrayOS server (`npm run e2e:testing`, `EXPOSE_TOOLS=all`).
 - **Read tools** — unit tests (mocked shell) **and** read-only E2E
   (`npm run e2e`); E2E never calls a write tool on a real router.
 - **Write tools** — unit tests with a mocked shell; CI E2E against simulated
-  DrayOS only. A write executes only after confirm (token or human code).
-- **Confirm gate** — single-use 60s token bound to the exact rendered command.
+  DrayOS only. A write executes only after Ed25519 signed approval.
+- **Confirm gate** — single-use 60s intent bound to the command digest; human
+  signs with a private key (`tools/approve.mjs`); MCP verifies `VIGOR_APPROVE_PUBKEY`.
 - **Dangerous writes** — additionally require `acknowledge: true` and return a
   lockout warning (policy in `src/commands/write-policy.ts`).
-- **Human confirm (optional)** — `VIGOR_HUMAN_CONFIRM=true` hides the token;
-  approve with `confirmation_id` + `VIGOR_CONFIRM_PASSPHRASE`.
 - **Auto-commit** — after a successful confirmed write, `sys commit` runs
   (`VIGOR_AUTO_COMMIT`; skipped for `skipCommit`). Outcome in
   `write_audit.commit_status`.
-- **Command mutex** — commands are serialized on the shared SSH shell.
+- **Command mutex** — commands are serialized on the shared SSH shell; writes
+  use an exclusive confirm→execute lock.
 - **Hard blocklist** — `sys cfg default`, `sys halt`, `mngt rmtcfg enable`,
   `linux clean *` refused regardless of the registry.
 - **Tool filters** — `EXPOSE_TOOLS` / `VIGOR_DISABLED_TOOLS`; read output capped
   via `VIGOR_TOOL_OUTPUT_LIMIT`.
 - **Injection guards** — shared Zod validators (`safeText` / `noControl` /
-  `ipv4Mask`, …).
+  `ipv4Mask`, …) aligned with SDK command framing.
 - Credentials live only in `.env` (chmod 600, gitignored); secret args are
-  redacted in SQLite logs.
+  redacted in SQLite logs and pending confirm files (`0600`).
 
 ## Architecture
 
 ```
 opencode ←stdio→ MCP server (Node 24 + TypeScript)
-                        │ ssh2 interactive shell channel
+                        │ @jooservices/vigor3912s-sdk + ssh-client
                         ▼
                 DrayOS CLI @ <VIGOR_HOST>  (prompt `DrayTek> `)
 ```
@@ -77,10 +77,10 @@ opencode ←stdio→ MCP server (Node 24 + TypeScript)
 | `src/commands/registry/` | CLI catalog by family (`R` / `Ra` / `W`) |
 | `src/commands/validators.ts` | Shared Zod arg schemas |
 | `src/commands/write-policy.ts` | `dangerous` / `secretArgs` / `snapshotRead` / … |
-| `src/commands/write-executor.ts` | Confirm → snapshot → execute → commit → audit |
+| `src/commands/write-executor.ts` | Sign-gated confirm → snapshot → execute → commit → audit |
 | `src/commands/build.ts` | MCP tool registration |
 | `src/commands/read-allowlist.ts` | Registry-derived allowlist for `runCommand()` |
-| `src/ssh/driver.ts` | Interactive shell client + host-key verify |
+| `src/ssh/sdk-vigor-client.ts` | SDK client + `SshClientTransport` |
 
 DrayOS SSH does **not** support the exec channel or key auth — password auth
 and an interactive shell only.
@@ -91,8 +91,9 @@ Every registry command becomes an MCP tool:
 
 - **Read tools (108)** — run the CLI and return output (structured when a
   parser exists). Formatters receive validated args (e.g. `ip_ping` target).
-- **Write tools (109)** — first call returns a preview + `confirm_token` (or
-  `confirmation_id` in human-confirm mode); second call executes.
+- **Write tools (109)** — first call returns a redacted preview +
+  `confirmation_id` / `sign_payload`; second call requires `signature`
+  (and `acknowledge: true` for dual-tier tools).
 
 | Tool | CLI (live-verified, fw 4.4.7_RC2) |
 | --- | --- |

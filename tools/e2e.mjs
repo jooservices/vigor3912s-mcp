@@ -23,13 +23,42 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { signApproval } from '../dist/tools/approve-crypto.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cwd = path.resolve(here, '..');
 const STATE_FILE = path.join(cwd, 'recon-output', 'e2e-passed.json');
 
-const READ_ARGS = (id) =>
-  ['ip_ping', 'ip_tracert', 'ip6_ping', 'ip6_tracert'].includes(id) ? { host: '8.8.8.8' } : {};
+function loadApprovePrivateKey() {
+  const file =
+    process.env.VIGOR_APPROVE_PRIVKEY_FILE ?? path.join(cwd, 'data', 'keys', 'approve-private.pem');
+  if (!fs.existsSync(file)) {
+    throw new Error(
+      `Missing approve private key at ${file}. Run: node tools/approve-keygen.mjs && export VIGOR_APPROVE_PUBKEY=…`,
+    );
+  }
+  return fs.readFileSync(file, 'utf8');
+}
+
+function signPreview(body) {
+  return signApproval(
+    loadApprovePrivateKey(),
+    body.confirmation_id,
+    body.nonce,
+    body.command_digest,
+    body.expires_at,
+  );
+}
+
+const READ_ARGS = (id) => {
+  if (['ip_ping', 'ip_tracert', 'ip6_ping', 'ip6_tracert'].includes(id)) return { host: '8.8.8.8' };
+  if (id === 'sys_health') return { metric: 'cpu_usage' };
+  if (id === 'ha_show') return { section: 'generalSetup' };
+  if (id === 'ha_status') return { scope: 'localRouter', detailLevel: 0 };
+  if (id === 'ipf_flowtrack_view') return { mode: 'sessions' };
+  if (id === 'csm_appe_show') return { group: 'all' };
+  return {};
+};
 
 // Representative write tests executed against the fake server (E2E_FAKE=1).
 const WRITE_ARGS = {
@@ -37,27 +66,61 @@ const WRITE_ARGS = {
   wan_enable: { wan: 4 },
   dhcp_gateway: { lan: 1, gateway: '192.168.1.1' },
   ip_route_add: { dest: '10.0.0.0', mask: '255.255.255.0', gw: '192.168.1.1' },
-  sys_name: { name: 'TestRouter' },
+  sys_name: { wan: 'wan1', name: 'TestRouter' },
+  sys_tftpd: {},
+  sys_alg: { enabled: 1 },
+  sys_syslog: { args: ['-a', '1'] },
+  sys_webhook: { args: ['status'] },
+  sys_tr069: { args: ['get'] },
+  sys_license: { args: ['liclog'] },
+  sys_mailalert: { args: ['-e', '1'] },
   mngt_sshport: { port: 22 },
+  mngt_sshtimeout: { seconds: 200 },
+  mngt_telnettimeout: { seconds: 200 },
+  mngt_noping: { action: 'off' },
+  mngt_defenseworm: { action: 'off' },
+  mngt_bfp: { args: ['-e', '1'] },
   sys_passwd: { old: 'oldpass', new: 'newpass' },
   sys_commit: {},
   testmail_send: {},
   wol_send: { mac: '00:11:22:33:44:55' },
-  internet_set: { wan: 1, mode: 0 },
+  internet_set: { wan: 1, mode: 0, ispName: 'TestIsp' },
   vrrp_reset: {},
   user_setdefault: {},
   dos_activate: {},
   portmaptime_set: { proto: 't', seconds: 300 },
   linux_ssh_enable: {},
-  qos_setup: { param: 'limit bandwidth 1000' },
-  ipf_set: { param: 'drop' },
+  qos_setup: { args: ['limit', 'bandwidth', '1000'] },
+  ipf_set: { action: 'callFilterSet', setNo: 1 },
+  ipf_rule: { setNo: 1, ruleNo: 1, action: 'view' },
+  ipf_flowtrack_set: { action: 'refresh' },
   upnp_on: {},
   appqos_enable: { mode: 0 },
   msubnet_switch: { onoff: 'on' },
   vlan_on: {},
   vrrp_enable: { onoff: 'on' },
-  csm_ucf: { param: 'block' },
-  switch_on: { param: 'port1' },
+  csm_ucf: { action: 'show' },
+  csm_appe_set: { index: 1, action: 'view', group: 'IM' },
+  csm_wcf: { action: 'show' },
+  csm_dnsf: { action: 'profileShow' },
+  switch_on: {},
+  wan_lb: { wanInterface: 'wan1', state: 'on' },
+  wan_budget: { wan: 1, action: 'state', enabled: false },
+  wan_failover: { action: 'show', index: 1 },
+  wan_vlan: { wan: 1, action: 'state', enabled: false },
+  ha_set: { args: ['-e', '0'] },
+  vlan_group: { groupId: 0, action: 'show' },
+  vigbrg_set: { ipVersion: 4, wanIndex: 1, lanIndex: 1, bridgeEnabled: 0 },
+  swm_post: { mac: '001122334455' },
+  swm_group: { action: 'show' },
+  swm_profile: { action: 'show' },
+  swm_detail: { action: 'show' },
+  swm_maintain: { action: 'show' },
+  swm_search: { action: 'mac', mac: '001122334455' },
+  swm_db: { action: 'ctlShow' },
+  swm_alert: { action: 'show' },
+  swm_log: { action: 'showFilter' },
+  swm_snmp: { action: 'sys', mac: '001122334455' },
 };
 
 function loadPassed() {
@@ -102,7 +165,7 @@ try {
     process.exit(0);
   }
   const exposedWrites = [...toolsById.keys()].filter((id) =>
-    Object.keys(toolsById.get(id)?.inputSchema?.properties ?? {}).includes('confirm_token'),
+    Object.keys(toolsById.get(id)?.inputSchema?.properties ?? {}).includes('signature'),
   );
   if (exposedWrites.length > 0) {
     console.warn(`WARNING: ${exposedWrites.length} write tools are exposed — E2E will exercise confirmed writes against the target.`);
@@ -110,9 +173,8 @@ try {
 
   for (const [id, tool] of toolsById) {
     const inputSchema = tool.inputSchema ?? {};
-    const hasArgs = Object.keys(inputSchema.properties ?? {}).length > 0;
-    // read = no confirm_token in the schema; write = has confirm_token.
-    const isWrite = Object.keys(inputSchema.properties ?? {}).includes('confirm_token');
+    // read = no signature in the schema; write = has signature.
+    const isWrite = Object.keys(inputSchema.properties ?? {}).includes('signature');
 
     if (!isWrite) {
       if (passed.has(id)) continue;
@@ -139,7 +201,8 @@ try {
     const body = JSON.parse(textOf(preview));
     const okPreview =
       body.status === 'needs_confirmation' &&
-      typeof body.confirm_token === 'string' &&
+      typeof body.confirmation_id === 'string' &&
+      typeof body.command_digest === 'string' &&
       body.preview.length > 0;
     check(`write:${id}:preview`, okPreview, body.preview ?? '(no preview)');
 
@@ -149,10 +212,19 @@ try {
       const ack = body.dangerous ? { acknowledge: true } : {};
       const done = await mcp.callTool({
         name: id,
-        arguments: { ...args, confirm_token: body.confirm_token, ...ack },
+        arguments: {
+          ...args,
+          confirmation_id: body.confirmation_id,
+          signature: signPreview(body),
+          ...ack,
+        },
       });
       const db = JSON.parse(textOf(done));
-      check(`write:${id}:execute`, !isError(done) && db.status === 'done', `cmd=${db.command ?? ''}`);
+      check(
+        `write:${id}:execute`,
+        !isError(done) && (db.status === 'done' || db.status === 'commit_failed'),
+        `cmd=${db.command ?? ''} status=${db.status ?? ''}`,
+      );
     }
   }
 

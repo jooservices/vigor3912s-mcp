@@ -1,14 +1,17 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readCommands, writeCommands } from './registry/index.js';
 import { buildServer } from '../index.js';
-import { FakeClient } from '../test/fake-ssh2.js';
+import { FakeVigorClient } from '../test/fake-vigor-client.js';
+import {
+  generateApproveKeyPair,
+  publicKeyToConfigValue,
+  signApproval,
+} from '../tools/approve-crypto.js';
+import { readCommands, writeCommands } from './registry/index.js';
 
-vi.mock('ssh2', async () => {
-  const mod = await import('../test/fake-ssh2.js');
-  return { Client: mod.FakeClient };
-});
+const keys = generateApproveKeyPair();
+const approvePublicKey = publicKeyToConfigValue(keys.publicKeyPem);
 
 function cfg(overrides: Record<string, unknown> = {}) {
   return {
@@ -19,8 +22,7 @@ function cfg(overrides: Record<string, unknown> = {}) {
     logDb: ':memory:',
     readOnly: false,
     autoCommit: false,
-    humanConfirm: false,
-    confirmPassphrase: undefined,
+    approvePublicKey,
     exposeTools: [],
     disabledTools: [],
     toolOutputLimit: 16000,
@@ -29,8 +31,24 @@ function cfg(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function signPreview(body: {
+  confirmation_id: string;
+  nonce: string;
+  command_digest: string;
+  expires_at: number;
+}): string {
+  return signApproval(
+    keys.privateKeyPem,
+    body.confirmation_id,
+    body.nonce,
+    body.command_digest,
+    body.expires_at,
+  );
+}
+
 async function startServer(cfgValue = cfg()) {
-  const { server, store } = buildServer(cfgValue as never);
+  const fake = new FakeVigorClient(Boolean(cfgValue.readOnly));
+  const { server, store } = buildServer(cfgValue as never, { client: fake });
   const [serverT, clientT] = InMemoryTransport.createLinkedPair();
   await serverT.start();
   await clientT.start();
@@ -54,8 +72,8 @@ function isError(res: unknown): boolean {
 }
 
 afterEach(() => {
-  FakeClient.instances = [];
-  FakeClient.script = {};
+  FakeVigorClient.instances = [];
+  FakeVigorClient.script = {};
   vi.restoreAllMocks();
 });
 
@@ -72,7 +90,7 @@ describe('registry -> MCP tool generation', () => {
   });
 
   it('calls a read tool and returns structured output', async () => {
-    FakeClient.script = {
+    FakeVigorClient.script = {
       '': '',
       'show session': 'Maximum Session Number: 500000\nCurrent Session Usage: 110',
     };
@@ -82,57 +100,56 @@ describe('registry -> MCP tool generation', () => {
     await server.close();
   });
 
-  it('passes validated args into formatters (ip_ping target)', async () => {
-    FakeClient.script = {
+  it('passes validated args into the rendered read command (ip_ping)', async () => {
+    FakeVigorClient.script = {
       '': '',
       'ip ping 8.8.8.8': 'Packets: Sent = 5, Received = 5, Lost = 0 (0% loss)',
     };
     const { mcp, server } = await startServer();
     const res = await mcp.callTool({ name: 'ip_ping', arguments: { host: '8.8.8.8' } });
     const body = JSON.parse(textOf(res));
-    expect(body.target).toBe('8.8.8.8');
-    expect(body.sent).toBe(5);
+    expect(body).toContain('Packets: Sent = 5');
     await server.close();
   });
 
   it('write tool preview does NOT send anything to the router', async () => {
-    FakeClient.script = { '': '' };
+    FakeVigorClient.script = { '': '' };
     const { mcp, server } = await startServer();
     const res = await mcp.callTool({ name: 'wan_disable', arguments: { wan: 1 } });
     const body = JSON.parse(textOf(res));
     expect(body.status).toBe('needs_confirmation');
     expect(body.preview).toBe('wan disable WAN1');
-    expect(typeof body.confirm_token).toBe('string');
-    // nothing was written to the shell for the preview
-    const wrote = FakeClient.instances.flatMap((c) => c.getStream()?.written ?? []);
+    expect(typeof body.confirmation_id).toBe('string');
+    expect(typeof body.command_digest).toBe('string');
+    expect(body.confirm_token).toBeUndefined();
+    const wrote = FakeVigorClient.instances.flatMap((c) => c.getStream()?.written ?? []);
     expect(wrote.some((w) => w.includes('wan disable'))).toBe(false);
     await server.close();
   });
 
   it('confirmed write executes exactly the rendered command once', async () => {
-    FakeClient.script = {
+    FakeVigorClient.script = {
       '': '',
       'wan disable WAN1': '% done',
       'wan status': 'BWAN1: Offline',
     };
     const { mcp, server, store } = await startServer();
     const preview = await mcp.callTool({ name: 'wan_disable', arguments: { wan: 1 } });
-    const token = JSON.parse(textOf(preview)).confirm_token;
+    const p = JSON.parse(textOf(preview));
     const done = await mcp.callTool({
       name: 'wan_disable',
-      arguments: { wan: 1, confirm_token: token, acknowledge: true },
+      arguments: { wan: 1, confirmation_id: p.confirmation_id, signature: signPreview(p), acknowledge: true },
     });
     const body = JSON.parse(textOf(done));
     expect(body.status).toBe('done');
     expect(body.command).toBe('wan disable WAN1');
     expect(body.before).toContain('BWAN1');
-    const wrote = FakeClient.instances.flatMap((c) => c.getStream()?.written ?? []);
+    const wrote = FakeVigorClient.instances.flatMap((c) => c.getStream()?.written ?? []);
     expect(wrote.filter((w) => w.includes('wan disable WAN1')).length).toBe(1);
 
-    // SQLite audit: preview + executed rows with before/after snapshot
-    const audits = store.query<Array<{ status: string; success: number | null; before_snapshot: string | null; after_snapshot: string | null }>>(
-      'SELECT status, success, before_snapshot, after_snapshot FROM write_audit ORDER BY id',
-    );
+    const audits = store.query<
+      Array<{ status: string; success: number | null; before_snapshot: string | null; after_snapshot: string | null }>
+    >('SELECT status, success, before_snapshot, after_snapshot FROM write_audit ORDER BY id');
     expect(audits.map((a) => a.status)).toEqual(['preview', 'executed']);
     const exec = audits[1];
     expect(exec?.success).toBe(1);
@@ -148,22 +165,29 @@ describe('registry -> MCP tool generation', () => {
     await server.close();
   });
 
-  it('rejects a write with an invalid / mismatched token', async () => {
-    FakeClient.script = { '': '' };
+  it('rejects a write with an invalid signature', async () => {
+    FakeVigorClient.script = { '': '' };
     const { mcp, server } = await startServer();
+    const preview = await mcp.callTool({ name: 'wan_disable', arguments: { wan: 1 } });
+    const p = JSON.parse(textOf(preview));
     const res = await mcp.callTool({
       name: 'wan_disable',
-      arguments: { wan: 1, confirm_token: 'bogus', acknowledge: true },
+      arguments: {
+        wan: 1,
+        confirmation_id: p.confirmation_id,
+        signature: Buffer.alloc(64).toString('base64'),
+        acknowledge: true,
+      },
     });
     expect(isError(res)).toBe(true);
-    expect(JSON.stringify(res.content)).toContain('not found');
-    const wrote = FakeClient.instances.flatMap((c) => c.getStream()?.written ?? []);
+    expect(JSON.stringify(res.content)).toMatch(/signature|invalid/i);
+    const wrote = FakeVigorClient.instances.flatMap((c) => c.getStream()?.written ?? []);
     expect(wrote.some((w) => w.includes('wan disable'))).toBe(false);
     await server.close();
   });
 
   it('args validation rejects invalid input before any command is built', async () => {
-    FakeClient.script = { '': '' };
+    FakeVigorClient.script = { '': '' };
     const { mcp, server } = await startServer();
     const res = await mcp.callTool({
       name: 'wan_disable',
@@ -174,37 +198,36 @@ describe('registry -> MCP tool generation', () => {
   });
 
   it('blocks CLI injection via control characters in write params', async () => {
-    FakeClient.script = { '': '' };
+    FakeVigorClient.script = { '': '' };
     const { mcp, server } = await startServer();
-    // CR would terminate the CLI line and inject a second command.
     const res = await mcp.callTool({
-      name: 'ipf_rule',
-      arguments: { param: 'drop all\rwan disable WAN1' },
+      name: 'qos_setup',
+      arguments: { args: ['drop', 'all\rwan', 'disable', 'WAN1'] },
     });
     expect(isError(res)).toBe(true);
-    const wrote = FakeClient.instances.flatMap((c) => c.getStream()?.written ?? []);
+    const wrote = FakeVigorClient.instances.flatMap((c) => c.getStream()?.written ?? []);
     expect(wrote.some((w) => w.includes('wan disable'))).toBe(false);
     await server.close();
   });
 
   it('blocks shell metacharacters in write params', async () => {
-    FakeClient.script = { '': '' };
+    FakeVigorClient.script = { '': '' };
     const { mcp, server } = await startServer();
     for (const bad of ['x; reboot', 'x & reboot', 'x`reboot`', 'x$reboot']) {
       const res = await mcp.callTool({ name: 'qos_setup', arguments: { param: bad } });
       expect(isError(res), `should reject ${JSON.stringify(bad)}`).toBe(true);
     }
-    const wrote = FakeClient.instances.flatMap((c) => c.getStream()?.written ?? []);
+    const wrote = FakeVigorClient.instances.flatMap((c) => c.getStream()?.written ?? []);
     expect(wrote.some((w) => w.includes('reboot'))).toBe(false);
     await server.close();
   });
 
   it('allows a write preview for a clean parameter (no false positives)', async () => {
-    FakeClient.script = { '': '' };
+    FakeVigorClient.script = { '': '' };
     const { mcp, server } = await startServer();
     const res = await mcp.callTool({
       name: 'qos_setup',
-      arguments: { param: 'limit bandwidth 1000' },
+      arguments: { args: ['limit', 'bandwidth', '1000'] },
     });
     const body = JSON.parse(textOf(res));
     expect(body.status).toBe('needs_confirmation');
@@ -212,36 +235,35 @@ describe('registry -> MCP tool generation', () => {
     await server.close();
   });
 
-  it('marks dangerous writes and requires acknowledge: true (token preserved)', async () => {
-    FakeClient.script = { '': '', 'wan disable WAN1': '% done', 'wan status': 'BWAN1: Offline' };
+  it('marks dual-confirm writes and requires acknowledge: true (signature preserved)', async () => {
+    FakeVigorClient.script = { '': '', 'wan disable WAN1': '% done', 'wan status': 'BWAN1: Offline' };
     const { mcp, server } = await startServer();
     const preview = await mcp.callTool({ name: 'wan_disable', arguments: { wan: 1 } });
     const body = JSON.parse(textOf(preview));
     expect(body.dangerous).toBe(true);
-    const token = body.confirm_token;
+    expect(body.confirm_tier).toBe('dual');
+    const signature = signPreview(body);
 
-    // confirm without acknowledge -> denied, token NOT consumed
     const denied = await mcp.callTool({
       name: 'wan_disable',
-      arguments: { wan: 1, confirm_token: token },
+      arguments: { wan: 1, confirmation_id: body.confirmation_id, signature },
     });
     expect(isError(denied)).toBe(true);
     expect(JSON.stringify(denied.content)).toContain('acknowledge');
-    const wrote0 = FakeClient.instances.flatMap((c) => c.getStream()?.written ?? []);
+    const wrote0 = FakeVigorClient.instances.flatMap((c) => c.getStream()?.written ?? []);
     expect(wrote0.some((w) => w.includes('wan disable'))).toBe(false);
 
-    // same token still valid with acknowledge -> executes
     const done = await mcp.callTool({
       name: 'wan_disable',
-      arguments: { wan: 1, confirm_token: token, acknowledge: true },
+      arguments: { wan: 1, confirmation_id: body.confirmation_id, signature, acknowledge: true },
     });
     expect(JSON.parse(textOf(done)).status).toBe('done');
     await server.close();
   });
 
   it('read-only mode registers no write tools', async () => {
-    FakeClient.script = { '': '' };
-    const { mcp, server } = await startServer(cfg({ readOnly: true }));
+    FakeVigorClient.script = { '': '' };
+    const { mcp, server } = await startServer(cfg({ readOnly: true, approvePublicKey: undefined }));
     const tools = await mcp.listTools();
     const names = tools.tools.map((t) => t.name);
     expect(names).toContain('show_session');
@@ -250,7 +272,7 @@ describe('registry -> MCP tool generation', () => {
   });
 
   it('exposeTools allowlist and disabledTools denylist filter registration', async () => {
-    FakeClient.script = { '': '' };
+    FakeVigorClient.script = { '': '' };
     const { mcp, server } = await startServer(
       cfg({ exposeTools: ['show_session', 'wan_status'], disabledTools: ['wan_status'] }),
     );
@@ -262,7 +284,7 @@ describe('registry -> MCP tool generation', () => {
   });
 
   it('auto-commit runs sys commit after a write and records commit_status', async () => {
-    FakeClient.script = {
+    FakeVigorClient.script = {
       '': '',
       'wan disable WAN1': '% done',
       'wan status': 'BWAN1: Offline',
@@ -270,13 +292,18 @@ describe('registry -> MCP tool generation', () => {
     };
     const { mcp, server, store } = await startServer(cfg({ autoCommit: true }));
     const preview = await mcp.callTool({ name: 'wan_disable', arguments: { wan: 1 } });
-    const token = JSON.parse(textOf(preview)).confirm_token;
+    const p = JSON.parse(textOf(preview));
     const done = await mcp.callTool({
       name: 'wan_disable',
-      arguments: { wan: 1, confirm_token: token, acknowledge: true },
+      arguments: {
+        wan: 1,
+        confirmation_id: p.confirmation_id,
+        signature: signPreview(p),
+        acknowledge: true,
+      },
     });
     expect(JSON.parse(textOf(done)).commit).toBe('ok');
-    const wrote = FakeClient.instances.flatMap((c) => c.getStream()?.written ?? []);
+    const wrote = FakeVigorClient.instances.flatMap((c) => c.getStream()?.written ?? []);
     expect(wrote.some((w) => w.includes('sys commit'))).toBe(true);
     const audit = store.query<Array<{ status: string; commit_status: string | null }>>(
       "SELECT status, commit_status FROM write_audit WHERE status='executed'",
@@ -286,7 +313,7 @@ describe('registry -> MCP tool generation', () => {
   });
 
   it('caps large read tool output with a truncated flag', async () => {
-    FakeClient.script = { '': '', 'show lan': 'A'.repeat(5000) };
+    FakeVigorClient.script = { '': '', 'show lan': 'A'.repeat(5000) };
     const { mcp, server } = await startServer(cfg({ toolOutputLimit: 200 }));
     const res = await mcp.callTool({ name: 'show_lan', arguments: {} });
     const body = JSON.parse(textOf(res));
@@ -295,60 +322,14 @@ describe('registry -> MCP tool generation', () => {
     await server.close();
   });
 
-  it('default mode (humanConfirm off) returns the token in the preview', async () => {
-    FakeClient.script = { '': '' };
+  it('preview requires cryptographic signature fields (no model token)', async () => {
+    FakeVigorClient.script = { '': '' };
     const { mcp, server } = await startServer();
     const res = await mcp.callTool({ name: 'wan_disable', arguments: { wan: 1 } });
     const body = JSON.parse(textOf(res));
-    expect(body.human_confirm).toBe(false);
-    expect(typeof body.confirm_token).toBe('string');
-    expect(body.message).toContain('approval');
-    await server.close();
-  });
-
-  it('human-confirm mode hides the token and rejects a wrong user code', async () => {
-    FakeClient.script = { '': '', 'wan disable WAN1': '% done', 'wan status': 'BWAN1: Offline' };
-    const { mcp, server, store } = await startServer(
-      cfg({ humanConfirm: true, confirmPassphrase: 'secret-passphrase' }),
-    );
-    const preview = await mcp.callTool({ name: 'wan_disable', arguments: { wan: 1 } });
-    const body = JSON.parse(textOf(preview));
-    expect(body.human_confirm).toBe(true);
-    expect(body.confirm_token).toBeUndefined(); // token hidden from the model
-    expect(typeof body.confirmation_id).toBe('string');
-    expect(body.message).toContain('confirmation code');
-
-    // wrong code -> denied, nothing sent to the router
-    const denied = await mcp.callTool({
-      name: 'wan_disable',
-      arguments: { wan: 1, confirmation_id: body.confirmation_id, user_code: 'wrong', acknowledge: true },
-    });
-    expect(isError(denied)).toBe(true);
-    expect(JSON.stringify(denied.content)).toContain('wrong confirmation code');
-    const wrote0 = FakeClient.instances.flatMap((c) => c.getStream()?.written ?? []);
-    expect(wrote0.some((w) => w.includes('wan disable'))).toBe(false);
-
-    // correct code -> executes
-    const done = await mcp.callTool({
-      name: 'wan_disable',
-      arguments: { wan: 1, confirmation_id: body.confirmation_id, user_code: 'secret-passphrase', acknowledge: true },
-    });
-    expect(JSON.parse(textOf(done)).status).toBe('done');
-    await server.close();
-  });
-
-  it('human-confirm mode requires confirmation_id and user_code', async () => {
-    FakeClient.script = { '': '' };
-    const { mcp, server } = await startServer(
-      cfg({ humanConfirm: true, confirmPassphrase: 'secret-passphrase' }),
-    );
-    // has a confirmation_id but no user_code -> denied
-    const res = await mcp.callTool({
-      name: 'wan_disable',
-      arguments: { wan: 1, confirmation_id: 'bogus', acknowledge: true },
-    });
-    expect(isError(res)).toBe(true);
-    expect(JSON.stringify(res.content)).toContain('requires confirmation_id and user_code');
+    expect(body.confirm_token).toBeUndefined();
+    expect(body.sign_payload).toContain(body.confirmation_id);
+    expect(body.message).toContain('signature');
     await server.close();
   });
 });

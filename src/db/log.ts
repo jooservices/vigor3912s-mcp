@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { chmodSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 
@@ -139,8 +139,13 @@ export class LogStore {
 
   constructor(file: string) {
     try {
-      mkdirSync(path.dirname(file), { recursive: true });
+      mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
       this.db = new DatabaseSync(file);
+      try {
+        chmodSync(file, 0o600);
+      } catch {
+        /* best-effort on platforms that ignore mode */
+      }
       this.db.exec(SCHEMA);
       for (const migration of MIGRATIONS) {
         try {
