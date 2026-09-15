@@ -60,8 +60,8 @@ stays offline). Prefer `EXPOSE_TOOLS=readonly` unless writes are required.
   (CR/LF) remain blocked. Free-form CLI params still use the stricter
   `safeText`.
 - **`sys commit` after a confirmed write** is authorized internally without a
-  second confirm token. It only runs inside this process after a successful
-  gated write (or when `skipCommit` is set).
+  second approval signature. It only runs inside this process after a
+  successful gated write (or when `skipCommit` is set).
 
 ## Dependency audit
 

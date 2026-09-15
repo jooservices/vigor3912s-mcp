@@ -20,19 +20,26 @@
 
 ## Write / confirm issues
 
-**"confirmation token not found / used / expired"**
-- Tokens are single-use and expire after 60s. Request a new preview and confirm
-  promptly with the same arguments.
+**"confirmation … not found / used / expired" / invalid signature**
+- Approvals are single-use and expire after 60s. Request a new preview, sign
+  promptly with `node tools/approve.mjs <confirmation_id>`, and re-call with
+  the same args + `confirmation_id` + `signature`.
 
-**"dangerous write requires acknowledge: true"**
-- The command is flagged dangerous. Re-call with `"acknowledge": true`. Your
-  token is preserved (not consumed) by this rejection.
+**"dual-confirm write requires acknowledge: true"**
+- The command is dual-tier / dangerous. Re-call with `"acknowledge": true`.
+  The pending intent is preserved (not consumed) by this rejection.
 
 **"write command was not confirmed and was refused"**
-- The write was not authorized (token path failed). Get a fresh preview token.
+- The write was not authorized (signature path failed). Get a fresh preview
+  and a new signature.
+
+**Missing `VIGOR_APPROVE_PUBKEY`**
+- Required unless `VIGOR_READ_ONLY=true`. Run `node tools/approve-keygen.mjs`
+  and set the printed public key in `.env`.
 
 **"read-only mode is enabled; write commands are refused"**
-- `VIGOR_READ_ONLY=true` is set. Remove it to enable writes.
+- `VIGOR_READ_ONLY=true` is set (or writes are filtered out of
+  `EXPOSE_TOOLS`). Adjust env to enable writes.
 
 ## Runtime
 

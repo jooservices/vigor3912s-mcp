@@ -6,6 +6,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-15
+
+### Added
+
+- Execution path on **`@jooservices/vigor3912s-sdk`** + **`@jooservices/ssh-client`**
+  (`SdkVigorClient`, `SshClientTransport`); in-tree ssh2 driver removed.
+- **Ed25519 write approval** (`VIGOR_APPROVE_PUBKEY`, `tools/approve-keygen.mjs`,
+  `tools/approve.mjs`) replacing passphrase/token confirmation.
+- **`sdk_void` family** — auto-registers remaining zero-arg SDK TypedOperations
+  not already curated (~81 tools).
+- Structured MCP args for high-traffic families (sys/mngt/wan/internet/csm/ipf/
+  swm/qos/ldap/hsportal/tacacsplus and related), aligned with SDK/UG CLI forms.
+- Live helpers for safe WAN7 ISP Name rename/revert
+  (`tools/e2e_wan7_ispname_*.mjs`).
+- CI sibling clone of `ssh-client` and `vigor3912s-sdk` for `file:` deps.
+
+### Changed
+
+- Tool surface: **302 tools / 43 families** (150 read + 152 write), including
+  curated registry + `sdk_void`.
+- Confirm tier docs and UX describe signed approval (`confirm` / `dual`).
+- Fake DrayOS E2E tolerates parameterized renders; write execute success is
+  `status === 'done'` only.
+
+### Security
+
+- Host-key pin remains required for live routers.
+- HA `args` tokens reject embedded whitespace; secretArgs updated for structured
+  credential fields.
+
 ## [0.6.0] - 2026-09-14
 
 ### Added
@@ -21,11 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   → execute → commit → audit outside the MCP adapter.
 - Registry-derived **read allowlist** (`src/commands/read-allowlist.ts`) shared
   with the SSH driver (no parallel ping/tracert regexes).
-- **Human-in-the-loop confirm** (`VIGOR_HUMAN_CONFIRM=true`, default off):
-  token hidden from the model; approve with `confirmation_id` +
-  `VIGOR_CONFIRM_PASSPHRASE`. `tools/confirm.mjs` lists pending intents.
-- Idle SSH buffer cap; longer `confirmationId`; timing-safe passphrase verify
-  with rate limiting; `LogStore.query` limited to a single `SELECT`.
+- Idle SSH buffer cap; timing-safe denial paths; `LogStore.query` limited to a
+  single `SELECT`.
 
 ### Changed
 
@@ -33,7 +60,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `src/commands/registry/`.
 - Read formatters receive validated args (`format(raw, args)`); `ip_ping`
   reports the requested target.
-- Confirm denial audit maps `token_expired` → `expired`.
 - Dev dependency **vitest** upgraded to v5 (`npm audit` clean).
 
 ### Security
@@ -55,22 +81,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   DrayOS server (`E2E_FAKE=1`), never locally.
 - Release target is `0.5.0`.
 
-## [1.0.0] - 2026-09-13
+## [0.2.0] - 2026-09-13
 
 ### Added
 
-- Full CLI command coverage as MCP tools: **217 commands / 42 families**
-  (108 read + 109 write), generated from a single command registry
-  (`src/commands/registry.ts`).
-- Write tools with a **two-step confirm gate** (preview → single-use 60s token
-  bound to the exact command).
+- Full CLI command coverage as MCP tools (read + write families) from a single
+  command registry.
+- Write tools with a **two-step confirm gate** (preview → approval → execute).
 - **Dangerous-write** classification requiring `acknowledge: true` and a
   lockout warning.
 - **Auto `sys commit`** after successful confirmed writes (with `commit_status`
   audit; skipped for `skipCommit` commands).
-- **SQLite logging** (`node:sqlite`): `requests` (all requests with tool/router
-  timing) and `write_audit` (before/after snapshots, success, commit status).
-  Secrets redacted.
+- **SQLite logging** (`node:sqlite`): `requests` and `write_audit`. Secrets
+  redacted.
 - **Command mutex** — all commands serialized; concurrent tool calls never
   interleave.
 - **Read-only mode** (`VIGOR_READ_ONLY=true` disables write tools).
@@ -78,30 +101,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Hard blocklist** in the driver (`sys cfg default`, `sys halt`,
   `mngt rmtcfg enable`, `linux clean *`).
 - CLI injection guards (`noControl()` / `safeText()` zod validators).
-- `VigorClient` interface (`src/ssh/client.ts`) so a future 3912S SDK can
-  replace the ssh2 implementation.
-- Unit tests; E2E read tools verified one-by-one against a real router
-  (fw 4.4.7_RC2); fake DrayOS SSH server for CI.
-- Documentation: overview, architecture, user/admin/troubleshooting guides,
-  command registry, logging schema, configuration, MCP integration,
-  development/testing, SDK integration, and a self-contained Vigor 3912S
-  reference (incl. original PDFs).
+- `VigorClient` interface (`src/ssh/client.ts`) for pluggable transports.
+- Unit tests; E2E against a real router (fw 4.4.7_RC2); fake DrayOS SSH server
+  for CI.
+- Documentation set under `docs/`.
 
 ### Security
 
-- Confirmed the live firmware is `4.4.7_RC2` (docs baseline is `4.3.5.1`) and
-  re-verified all read commands against the device.
-- DrayOS SSH: exec channel and key auth are unsupported; the client drives an
-  interactive shell (password auth only).
-
-## [0.2.0] - 2026-09-13
-
-### Added
-
-- Full command registry expansion (190 → 217 commands).
-- Write confirm gate, SQLite logging, snapshot before/after.
-- Safety layers: mutex, read-only switch, blocklist, injection guards.
-- `VigorClient` interface refactor.
+- Confirmed the live firmware is `4.4.7_RC2` and re-verified read commands.
+- DrayOS SSH: exec channel and key auth are unsupported; interactive shell
+  (password auth only).
 
 ## [0.1.0] - 2026-09-13
 

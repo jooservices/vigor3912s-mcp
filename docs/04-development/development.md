@@ -24,6 +24,8 @@ src/
     fake-ssh-client.ts / fake-vigor-client.ts
 tools/
   e2e.mjs / e2e:testing   E2E (fake DrayOS or real target)
+  approve-keygen.mjs / approve.mjs   Ed25519 write approval helpers
+  e2e_wan7_ispname_*.mjs  live safe ISP Name rename/revert (LAN)
   gen-commands.mjs        regenerates docs/03-reference/commands.md
 ```
 
