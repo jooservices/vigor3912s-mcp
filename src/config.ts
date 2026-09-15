@@ -12,14 +12,10 @@ export const configSchema = z.object({
   /** After a successful confirmed write, run `sys commit` to persist. */
   autoCommit: z.boolean().default(true),
   /**
-   * When true, EVERY write tool requires a human-in-the-loop confirmation:
-   * the confirm token is hidden from the model, and the confirm call must
-   * include `confirmation_id` + `user_code` where `user_code` equals
-   * `VIGOR_CONFIRM_PASSPHRASE`. Default off — tokens are returned as before.
+   * Ed25519 public key (SPKI PEM or base64 DER) used to verify write approvals.
+   * Required unless `readOnly` is true.
    */
-  humanConfirm: z.boolean().default(false),
-  /** Secret key the human types to approve a write in human-confirm mode. */
-  confirmPassphrase: z.string().min(8).optional(),
+  approvePublicKey: z.string().min(1).optional(),
   /**
    * Whitelist of tool ids exposed to the AI. Special values:
    * - 'readonly' → only read tools
@@ -45,8 +41,20 @@ export const configSchema = z.object({
 
 export type VigorConfig = z.infer<typeof configSchema>;
 
-function truthy(v: string | undefined): boolean {
-  return v === 'true' || v === '1';
+const TRUTHY = new Set(['true', '1', 'yes', 'on']);
+const FALSY = new Set(['false', '0', 'no', 'off']);
+
+/**
+ * Parse a boolean env flag. Unknown values throw (fail closed on misconfig).
+ */
+export function parseEnvBool(name: string, v: string | undefined, defaultValue: boolean): boolean {
+  if (v === undefined || v.trim() === '') return defaultValue;
+  const n = v.trim().toLowerCase();
+  if (TRUTHY.has(n)) return true;
+  if (FALSY.has(n)) return false;
+  throw new Error(
+    `Invalid boolean for ${name}=${JSON.stringify(v)}; use true/false, 1/0, yes/no, or on/off`,
+  );
 }
 
 function list(v: string | undefined): string[] {
@@ -73,10 +81,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): VigorConfig {
     username: env.VIGOR_USER,
     password: env.VIGOR_PASSWORD,
     logDb: env.VIGOR_LOG_DB,
-    readOnly: truthy(env.VIGOR_READ_ONLY),
-    autoCommit: env.VIGOR_AUTO_COMMIT === undefined ? true : truthy(env.VIGOR_AUTO_COMMIT),
-    humanConfirm: truthy(env.VIGOR_HUMAN_CONFIRM),
-    confirmPassphrase: env.VIGOR_CONFIRM_PASSPHRASE,
+    readOnly: parseEnvBool('VIGOR_READ_ONLY', env.VIGOR_READ_ONLY, false),
+    autoCommit:
+      env.VIGOR_AUTO_COMMIT === undefined
+        ? true
+        : parseEnvBool('VIGOR_AUTO_COMMIT', env.VIGOR_AUTO_COMMIT, true),
+    approvePublicKey: env.VIGOR_APPROVE_PUBKEY,
     exposeTools: resolveExposeTools(env.EXPOSE_TOOLS),
     disabledTools: list(env.VIGOR_DISABLED_TOOLS),
     toolOutputLimit:
@@ -84,15 +94,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): VigorConfig {
         ? Number(env.VIGOR_TOOL_OUTPUT_LIMIT)
         : 16000,
     sshHostFingerprint: env.VIGOR_SSH_HOST_FINGERPRINT,
-    sshInsecureSkipHostVerify: truthy(env.VIGOR_SSH_INSECURE_SKIP_VERIFY),
+    sshInsecureSkipHostVerify: parseEnvBool(
+      'VIGOR_SSH_INSECURE_SKIP_VERIFY',
+      env.VIGOR_SSH_INSECURE_SKIP_VERIFY,
+      false,
+    ),
   };
   const parsed = configSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`Invalid VIGOR_* / EXPOSE_TOOLS environment config: ${parsed.error.message}`);
   }
   const config = parsed.data;
-  if (config.humanConfirm && !config.confirmPassphrase) {
-    throw new Error('VIGOR_HUMAN_CONFIRM=true requires VIGOR_CONFIRM_PASSPHRASE to be set');
+  if (!config.readOnly && !config.approvePublicKey) {
+    throw new Error(
+      'Write mode requires VIGOR_APPROVE_PUBKEY (Ed25519 SPKI PEM or base64 DER). ' +
+        'Generate a keypair with: node tools/approve-keygen.mjs',
+    );
   }
   if (!config.sshHostFingerprint && !config.sshInsecureSkipHostVerify) {
     throw new Error(

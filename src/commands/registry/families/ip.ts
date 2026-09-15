@@ -2,11 +2,6 @@ import { z } from 'zod';
 import { R, Ra, W } from '../builders.js';
 import type { FamilyDef } from '../types.js';
 import {
-  parseArpStatus,
-  parsePing,
-  parseRouteStatus,
-} from '../../../tools/parsers.js';
-import {
   ipv4,
   ipv4Mask,
   macDash,
@@ -16,15 +11,14 @@ export const ipFamily: FamilyDef = {
     family: 'ip',
     desc: 'IP, routing, ARP, diagnostics.',
     commands: [
-      R('ip_route_status', 'ip', 'ip route status', 'Routing table (connected/static/default)', parseRouteStatus),
-      R('ip_arp_status', 'ip', 'ip arp status', 'ARP table', parseArpStatus),
+      R('ip_route_status', 'ip', 'ip route status', 'Routing table (connected/static/default)'),
+      R('ip_arp_status', 'ip', 'ip arp status', 'ARP table'),
       Ra(
         'ip_ping',
         'ip',
         (a) => `ip ping ${String(a.host)}`,
         { host: ipv4 },
         'Ping an IPv4 host (5 packets)',
-        (raw, a) => parsePing(raw, String(a.host ?? '')),
       ),
       Ra('ip_tracert', 'ip', (a) => `ip tracert ${String(a.host)}`, { host: ipv4 }, 'Traceroute to an IPv4 host'),
       R('ip_session', 'ip', 'ip session', 'IP session table'),

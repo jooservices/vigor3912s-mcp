@@ -1,14 +1,13 @@
 /**
- * Transport-agnostic client contract for talking to a DrayTek Vigor 3912S.
+ * MCP tool-layer client contract.
  *
- * `VigorClient` is the interface the MCP tool layer depends on. The current
- * implementation is `SshVigorClient` (ssh2 interactive shell). A future
- * 3912S SDK can replace it by implementing this same interface and swapping
- * the instance in `buildServer()` — the registry, tools, logging, and confirm
- * gate stay unchanged.
+ * Production implementation is `SdkVigorClient`: MCP policy (allowlist /
+ * blocklist / confirm authorize / read-only) wraps `@jooservices/vigor3912s-sdk`
+ * over an SSH `Transport` adapter. Confirm gate, audit, and curated tools stay
+ * in MCP; the SDK owns DrayOS framing / typed ops.
  *
- * Implementations MUST honor the safety contract:
- * - `runCommand` sends READ commands only.
+ * Implementations MUST honor:
+ * - `runCommand` sends READ commands only (MCP allowlist).
  * - `runWriteCommand` executes only a command previously passed to
  *   `authorizeWrite` (single-shot).
  */
@@ -33,6 +32,7 @@ export class VigorCommandError extends Error {
 export interface RunCommandOptions {
   timeoutMs?: number;
   maxPages?: number;
+  signal?: AbortSignal;
 }
 
 /** Timing of the most recent command interaction (used by the log layer). */

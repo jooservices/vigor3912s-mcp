@@ -5,7 +5,7 @@ Repository-owned GitHub Actions workflows. All jobs run on GitHub-hosted
 
 | Workflow | Trigger | What it does |
 | --- | --- | --- |
-| `ci.yml` | PR to `master`/`develop` | Node 24: `npm ci` + `npm run ci` (lint, 50 unit tests, build) + gitleaks secret scan |
+| `ci.yml` | PR to `master`/`develop` | Node 24: `npm ci` + `npm run ci` (lint, unit tests ≥90% coverage, build) + gitleaks secret scan |
 | `e2e.yml` | PR to `master`/`develop`, `workflow_dispatch`, nightly | `npm run e2e:testing` — simulated DrayOS server, all tools exposed (reads + write confirm/execute) |
 | `commitlint.yml` | PR opened/edited | Validates commit messages against Conventional Commits (`.github/commitlint.config.mjs`) |
 | `semantic-pr.yml` | PR opened/edited | Validates the PR title against Conventional Commits |

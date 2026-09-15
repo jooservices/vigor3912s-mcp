@@ -18,15 +18,18 @@ same LAN as the router.
   DrayOS only). Mismatched keys abort before password auth completes.
 - **Read-only by default at the driver**: `runCommand()` only allows registry
   read commands; everything else is refused before reaching the router.
-- **Writes require explicit confirmation**: single-use, 60s token bound to the
-  exact command; dangerous writes additionally require `acknowledge: true`.
+- **Writes require signed approval**: preview returns `confirmation_id` +
+  `sign_payload`; execute requires an Ed25519 `signature` verified against
+  `VIGOR_APPROVE_PUBKEY`. Dual-tier writes also need `acknowledge: true`.
 - **Hard blocklist**: `sys cfg default`, `sys halt`, `mngt rmtcfg enable`, and
   `linux clean *` are refused regardless of the registry.
-- **Command mutex**: commands are serialized; concurrent calls never interleave.
+- **Command mutex**: commands are serialized; concurrent writes use an exclusive
+  confirm→execute lock.
 - **Read-only mode**: `VIGOR_READ_ONLY=true` disables all write tools.
-- **Injection guards**: free-form args reject control characters and shell
-  metacharacters.
+- **Injection guards**: free-form args reject control characters and framing
+  metacharacters (aligned with the SDK `frameSingleCommand` rules).
 - **No secrets in logs**: passwords and secret args are redacted to `***`;
+  pending confirm files store digests + redacted previews only (`0600`);
   credentials live only in `.env` (chmod 600, gitignored).
 
 ## Credential handling
@@ -45,22 +48,20 @@ same LAN as the router.
 
 ## Live-router operations
 
-Default `VIGOR_HUMAN_CONFIRM=false` returns a `confirm_token` to the model, so
-an agent can approve its own write. That is intentional for local automation on
-a trusted machine. For a live router with real impact:
-
-- Prefer `EXPOSE_TOOLS=readonly` unless writes are required, and/or
-- Set `VIGOR_HUMAN_CONFIRM=true` with `VIGOR_CONFIRM_PASSPHRASE` so the model
-  never sees the token (human approval via `tools/confirm.mjs`).
+Writes cannot be self-approved by the model. Generate a keypair
+(`node tools/approve-keygen.mjs`), set `VIGOR_APPROVE_PUBKEY` on the MCP host,
+and sign each pending write with `node tools/approve.mjs <id>` (private key
+stays offline). Prefer `EXPOSE_TOOLS=readonly` unless writes are required.
 
 ## Accepted risks
 
-- **`noControl` on password fields** allows shell metacharacters so real admin
-  passwords are not rejected; control characters (CR/LF) remain blocked.
-  Free-form CLI params still use the stricter `safeText`.
+- **`noControl` on password fields** rejects framing-unsafe metacharacters
+  (`;|&\`$` / `$(`) so MCP validation matches the SDK; control characters
+  (CR/LF) remain blocked. Free-form CLI params still use the stricter
+  `safeText`.
 - **`sys commit` after a confirmed write** is authorized internally without a
-  second confirm token. It only runs inside this process after a successful
-  gated write (or when `skipCommit` is set).
+  second approval signature. It only runs inside this process after a
+  successful gated write (or when `skipCommit` is set).
 
 ## Dependency audit
 

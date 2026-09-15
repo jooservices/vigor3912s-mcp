@@ -50,8 +50,9 @@ describe('macDash / macColon', () => {
 });
 
 describe('noControl', () => {
-  it('rejects CR/LF but allows password metacharacters', () => {
-    expect(noControl().safeParse('p@ss;|&`$').success).toBe(true);
+  it('rejects CR/LF and framing-rejected metacharacters', () => {
+    expect(noControl().safeParse('p@ssw0rd!').success).toBe(true);
+    expect(noControl().safeParse('p@ss;|&`$').success).toBe(false);
     expect(noControl().safeParse('old\nnew').success).toBe(false);
     expect(noControl().safeParse('old\rwan disable').success).toBe(false);
   });

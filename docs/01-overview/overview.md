@@ -5,11 +5,13 @@ An MCP (Model Context Protocol) server that lets AI assistants operate a
 
 ## What it does
 
-- Exposes the router's **full CLI command set** (217 commands / 42 families) as
-  MCP tools, generated from a single command registry.
-- **108 read tools** — status / diagnostics / views, run freely.
-- **109 write tools** — configuration changes, guarded by a two-step confirm
-  gate (preview → token → execute).
+- Exposes the router's **CLI command set** (302 tools / 43 families) as MCP
+  tools: curated registry families plus auto-registered zero-arg SDK ops
+  (`sdk_void`).
+- **150 read tools** — status / diagnostics / views, run freely when exposed.
+- **152 write tools** — configuration changes, guarded by Ed25519 signed
+  approval (preview → signature → execute).
+- Executes via **`@jooservices/vigor3912s-sdk`** over **`@jooservices/ssh-client`**.
 - Logs **every request** to a local SQLite database with timing, outcomes, and
   write before/after snapshots.
 
@@ -18,24 +20,24 @@ An MCP (Model Context Protocol) server that lets AI assistants operate a
 | | |
 | --- | --- |
 | Protocol | MCP (stdio transport) |
-| Runtime | Node.js >= 24, TypeScript |
+| Runtime | Node.js >= 24.21 \< 25, TypeScript |
 | Router access | SSH interactive shell (DrayOS has no exec channel) |
 | Deployment | Local stdio MCP; works with opencode, ChatGPT, Claude Code, etc. |
-| Version | 0.6.0 |
+| Version | 1.0.0 |
 
 ## Safety model (summary)
 
 - **SSH host-key pin** (`VIGOR_SSH_HOST_FINGERPRINT`) fails closed by default.
 - Read tools only send **verified read-only** commands (allowlist).
-- Write tools require a **single-use, 60s token** bound to the exact command.
-- **Dangerous writes** additionally require `acknowledge: true`.
-- Optional **human confirm** hides the token from the model.
+- Write tools require a **single-use Ed25519 signature** bound to the command
+  digest (60s TTL).
+- **Dual-tier writes** additionally require `acknowledge: true`.
 - **Command mutex** serializes all commands (no interleaving).
 - **Hard blocklist** (`sys cfg default`, `sys halt`, `mngt rmtcfg enable`,
-  `linux clean *`) is refused at the driver.
+  `linux clean *`) is refused at the client.
 - Optional **read-only / `EXPOSE_TOOLS=readonly`** limits the AI surface.
 - Secrets and passwords are **redacted** in logs.
-- The E2E suite never touches a real router for writes.
+- CI E2E never touches a real router for writes.
 
 See [`architecture.md`](./architecture.md) and the project `README.md` for
 details.
@@ -43,7 +45,8 @@ details.
 ## Quick start
 
 ```bash
-cp .env.example .env     # set VIGOR_HOST / VIGOR_USER / VIGOR_PASSWORD
+cp .env.example .env     # set VIGOR_HOST / USER / PASSWORD / SSH fingerprint
+node tools/approve-keygen.mjs   # if you need writes
 chmod 600 .env
 npm install
 npm run build

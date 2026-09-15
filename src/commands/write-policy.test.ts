@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { findCommand, writeCommands } from './registry/index.js';
-import { WRITE_POLICY } from './write-policy.js';
+import { findCommand, readCommands, writeCommands } from './registry/index.js';
+import { WRITE_POLICY, resolveConfirmTier } from './write-policy.js';
 
-describe('WRITE_POLICY', () => {
+describe('WRITE_POLICY / ConfirmTier', () => {
   it('only references write tools that exist in the registry', () => {
     const ids = new Set(writeCommands().map((c) => c.id));
     for (const id of Object.keys(WRITE_POLICY)) {
@@ -10,23 +10,35 @@ describe('WRITE_POLICY', () => {
     }
   });
 
-  it('merges policy onto findCommand / writeCommands', () => {
+  it('resolves reads to auto and unmarked writes to confirm', () => {
+    expect(resolveConfirmTier('read', undefined)).toBe('auto');
+    expect(resolveConfirmTier('write', undefined)).toBe('confirm');
+    expect(resolveConfirmTier('write', { confirm: 'dual' })).toBe('dual');
+  });
+
+  it('merges confirm tier onto findCommand / writeCommands', () => {
     const passwd = findCommand('sys_passwd');
+    expect(passwd?.confirm).toBe('dual');
     expect(passwd?.dangerous).toBe(true);
     expect(passwd?.secretArgs).toEqual(['old', 'new']);
 
     const ipAddr = findCommand('ip_addr');
-    expect(ipAddr?.dangerous).toBe(true);
+    expect(ipAddr?.confirm).toBe('dual');
     expect(ipAddr?.snapshotRead).toBe('show_lan');
     expect(ipAddr?.affectsNetwork).toBe(true);
 
     const commit = findCommand('sys_commit');
+    expect(commit?.confirm).toBe('confirm');
     expect(commit?.skipCommit).toBe(true);
-    expect(commit?.dangerous).toBeUndefined();
+    expect(commit?.dangerous).toBe(false);
+
+    const wanStatus = findCommand('wan_status');
+    expect(wanStatus?.confirm).toBe('auto');
+    expect(wanStatus?.dangerous).toBe(false);
   });
 
-  it('keeps prior dangerous tools and adds lockout-critical ones', () => {
-    const mustBeDangerous = [
+  it('marks dual-confirm tools (compat dangerous=true)', () => {
+    const mustBeDual = [
       'sys_passwd',
       'sys_reboot',
       'wan_enable',
@@ -35,7 +47,6 @@ describe('WRITE_POLICY', () => {
       'dhcp_off',
       'mngt_sshport',
       'internet_set',
-      // supplements
       'ip_addr',
       'ip_nmask',
       'vlan_off',
@@ -43,14 +54,22 @@ describe('WRITE_POLICY', () => {
       'ipf_rule',
       'user_account',
     ];
-    for (const id of mustBeDangerous) {
+    for (const id of mustBeDual) {
+      expect(findCommand(id)?.confirm, id).toBe('dual');
       expect(findCommand(id)?.dangerous, id).toBe(true);
     }
   });
 
+  it('keeps all reads on auto', () => {
+    for (const cmd of readCommands()) {
+      expect(cmd.confirm, cmd.id).toBe('auto');
+    }
+  });
+
   it('redacts free-form credential params via secretArgs', () => {
-    expect(findCommand('user_account')?.secretArgs).toEqual(['param']);
-    expect(findCommand('ldap_set')?.secretArgs).toEqual(['param']);
+    expect(findCommand('user_account')?.secretArgs).toEqual(['param', 'userName']);
+    expect(findCommand('ldap_set')?.secretArgs).toEqual(['value']);
+    expect(findCommand('tacacsplus_set')?.secretArgs).toEqual(['secret']);
     expect(findCommand('vpn_setup')?.secretArgs).toEqual(['param']);
   });
 

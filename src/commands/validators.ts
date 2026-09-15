@@ -32,8 +32,9 @@ export const macColon = z
   .regex(/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/, 'expected MAC as AA:BB:CC:DD:EE:FF');
 
 /**
- * Blocks control characters (incl. CR/LF/TAB) — prevents CLI line injection.
- * Allows shell metacharacters so passwords may contain `;|&\`$`.
+ * Blocks control characters (incl. CR/LF/TAB) and SDK framing-rejected
+ * sequences (`;`, `&`, `|`, backtick, `$(`) so MCP validation matches
+ * `frameSingleCommand` — passwords may still use other punctuation.
  */
 export const noControl = (max = 255) =>
   z
@@ -42,6 +43,9 @@ export const noControl = (max = 255) =>
     .max(max)
     .refine((v) => !/[\x00-\x1f]/.test(v), {
       message: 'control characters are not allowed',
+    })
+    .refine((v) => !/[;|&`]/.test(v) && !v.includes('$('), {
+      message: 'shell metacharacters rejected by command framing are not allowed',
     });
 
 /**

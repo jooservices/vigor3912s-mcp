@@ -1,77 +1,124 @@
 import { describe, expect, it } from 'vitest';
+import {
+  generateApproveKeyPair,
+  publicKeyToConfigValue,
+  signApproval,
+} from './approve-crypto.js';
 import { ConfirmError, ConfirmGate } from './confirm-gate.js';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
-describe('ConfirmGate', () => {
-  it('creates a token bound to the exact command', () => {
-    const gate = new ConfirmGate();
-    const { token } = gate.create('wan_disable', 'wan disable WAN1');
-    expect(token).toBeTypeOf('string');
-    expect(token.length).toBeGreaterThan(20);
-    expect(() => gate.validate(token, 'wan disable WAN1')).not.toThrow();
+describe('ConfirmGate (signed approval)', () => {
+  const keys = generateApproveKeyPair();
+  const pub = publicKeyToConfigValue(keys.publicKeyPem);
+
+  function signCreated(
+    gate: ConfirmGate,
+    toolId: string,
+    command: string,
+  ): { confirmationId: string; signature: string } {
+    const created = gate.create(toolId, command, command);
+    const signature = signApproval(
+      keys.privateKeyPem,
+      created.confirmationId,
+      created.nonce,
+      created.commandDigest,
+      created.expiresAt,
+    );
+    return { confirmationId: created.confirmationId, signature };
+  }
+
+  it('consumes a valid signature bound to the exact command', () => {
+    const gate = new ConfirmGate(60_000, 100, undefined, pub);
+    const { confirmationId, signature } = signCreated(gate, 'wan_disable', 'wan disable WAN1');
+    expect(() => gate.consumeSigned(confirmationId, 'wan disable WAN1', signature)).not.toThrow();
   });
 
-  it('rejects an unknown token', () => {
-    const gate = new ConfirmGate();
-    expect(() => gate.validate('nope', 'sys commit')).toThrowError(
-      new ConfirmError('invalid_token', 'confirmation token not found'),
+  it('rejects an unknown confirmation id', () => {
+    const gate = new ConfirmGate(60_000, 100, undefined, pub);
+    expect(() => gate.consumeSigned('nope', 'sys commit', 'aaaa')).toThrowError(
+      expect.objectContaining({ code: 'invalid_token' }),
     );
   });
 
-  it('rejects a token used for a different command (mismatch)', () => {
-    const gate = new ConfirmGate();
-    const { token } = gate.create('wan_disable', 'wan disable WAN1');
-    expect(() => gate.validate(token, 'wan disable WAN2')).toThrow(
+  it('rejects a signature used for a different command (mismatch)', () => {
+    const gate = new ConfirmGate(60_000, 100, undefined, pub);
+    const { confirmationId, signature } = signCreated(gate, 'wan_disable', 'wan disable WAN1');
+    expect(() => gate.consumeSigned(confirmationId, 'wan disable WAN2', signature)).toThrow(
       expect.objectContaining({ code: 'mismatch' }),
     );
   });
 
+  it('rejects a forged signature', () => {
+    const gate = new ConfirmGate(60_000, 100, undefined, pub);
+    const created = gate.create('sys_commit', 'sys commit', 'sys commit');
+    expect(() =>
+      gate.consumeSigned(created.confirmationId, 'sys commit', Buffer.alloc(64).toString('base64')),
+    ).toThrow(expect.objectContaining({ code: 'bad_signature' }));
+  });
+
   it('is single-use', () => {
-    const gate = new ConfirmGate();
-    const { token } = gate.create('sys_commit', 'sys commit');
-    gate.validate(token, 'sys commit');
-    expect(() => gate.validate(token, 'sys commit')).toThrow(
+    const gate = new ConfirmGate(60_000, 100, undefined, pub);
+    const { confirmationId, signature } = signCreated(gate, 'sys_commit', 'sys commit');
+    gate.consumeSigned(confirmationId, 'sys commit', signature);
+    expect(() => gate.consumeSigned(confirmationId, 'sys commit', signature)).toThrow(
       expect.objectContaining({ code: 'token_used' }),
     );
   });
 
-  it('rejects an expired token', async () => {
-    const gate = new ConfirmGate(20);
-    const { token } = gate.create('sys_reboot', 'sys reboot');
+  it('rejects an expired confirmation', async () => {
+    const gate = new ConfirmGate(20, 100, undefined, pub);
+    const { confirmationId, signature } = signCreated(gate, 'sys_reboot', 'sys reboot');
     await new Promise((r) => setTimeout(r, 40));
-    expect(() => gate.validate(token, 'sys reboot')).toThrow(
+    expect(() => gate.consumeSigned(confirmationId, 'sys reboot', signature)).toThrow(
       expect.objectContaining({ code: 'token_expired' }),
     );
   });
 
-  it('prunes expired intents', async () => {
-    const gate = new ConfirmGate(20);
-    gate.create('sys_reboot', 'sys reboot');
-    expect(gate.size).toBe(1);
-    await new Promise((r) => setTimeout(r, 40));
-    gate.create('sys_commit', 'sys commit'); // create triggers prune
-    expect(gate.size).toBe(1);
+  it('persists redacted pending views with mode 0600', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'vigor-pending-'));
+    const file = path.join(dir, 'pending-confirms.json');
+    try {
+      const gate = new ConfirmGate(60_000, 100, file, pub);
+      gate.create('sys_passwd', 'sys passwd secret oldnew', 'sys passwd *** ***');
+      const raw = readFileSync(file, 'utf8');
+      expect(raw).not.toContain('secret');
+      expect(raw).toContain('sys passwd *** ***');
+      expect(statSync(file).mode & 0o777).toBe(0o600);
+      const loaded = ConfirmGate.loadPending(file);
+      expect(loaded).toHaveLength(1);
+      expect(loaded[0]?.commandPreview).toBe('sys passwd *** ***');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
-  it('issues a longer confirmationId (16 hex chars)', () => {
+  it('requires approve public key to consume', () => {
     const gate = new ConfirmGate();
-    const { confirmationId } = gate.create('wan_disable', 'wan disable WAN1');
-    expect(confirmationId).toMatch(/^[0-9a-f]{16}$/);
+    const created = gate.create('sys_commit', 'sys commit', 'sys commit');
+    expect(() => gate.consumeSigned(created.confirmationId, 'sys commit', 'x')).toThrow(
+      new ConfirmError('bad_signature', 'VIGOR_APPROVE_PUBKEY is not configured'),
+    );
   });
 
-  it('verifies user codes timing-safely and rate-limits failures', () => {
-    const gate = new ConfirmGate(60_000, 100, undefined, 3, 60_000);
-    const { confirmationId } = gate.create('wan_disable', 'wan disable WAN1');
-    expect(() => gate.verifyUserCode(confirmationId, 'secret-passphrase', 'secret-passphrase')).not.toThrow();
+  it('rejects when too many intents are pending', () => {
+    const gate = new ConfirmGate(60_000, 1, undefined, pub);
+    gate.create('a', 'cmd a', 'cmd a');
+    expect(() => gate.create('b', 'cmd b', 'cmd b')).toThrow(/too many pending/);
+  });
 
-    const { confirmationId: id2 } = gate.create('wan_disable', 'wan disable WAN2');
-    expect(() => gate.verifyUserCode(id2, 'wrong', 'secret-passphrase')).toThrow(
-      expect.objectContaining({ code: 'invalid_token' }),
-    );
-    expect(() => gate.verifyUserCode(id2, 'wrong', 'secret-passphrase')).toThrow(
-      expect.objectContaining({ code: 'invalid_token' }),
-    );
-    expect(() => gate.verifyUserCode(id2, 'wrong', 'secret-passphrase')).toThrow(
-      expect.objectContaining({ code: 'rate_limited' }),
-    );
+  it('loadPending ignores corrupt files and non-arrays', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'vigor-pending-bad-'));
+    const file = path.join(dir, 'pending.json');
+    try {
+      expect(ConfirmGate.loadPending(path.join(dir, 'missing.json'))).toEqual([]);
+      writeFileSync(file, '{');
+      expect(ConfirmGate.loadPending(file)).toEqual([]);
+      writeFileSync(file, '{"no":"array"}');
+      expect(ConfirmGate.loadPending(file)).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
