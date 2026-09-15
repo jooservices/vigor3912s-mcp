@@ -41,9 +41,7 @@ jobs:
             echo "::error::Missing sibling SDK repo at ${VIGOR_SDK_REPO} (ref ${VIGOR_SDK_REF})."
             exit 1
           fi
-          git clone --depth 1 --branch "${VIGOR_SDK_REF}" "${VIGOR_SDK_REPO}" vigor3912s-sdk-tmp
-          mkdir -p vigor3912s
-          mv vigor3912s-sdk-tmp vigor3912s/sdk
+          git clone --depth 1 --branch "${VIGOR_SDK_REF}" "${VIGOR_SDK_REPO}" vigor3912s-sdk
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -53,14 +51,14 @@ jobs:
           cache-dependency-path: |
             vigor3912s-mcp/package-lock.json
             ssh-client/package-lock.json
-            vigor3912s/sdk/package-lock.json
+            vigor3912s-sdk/package-lock.json
 
       - name: Install and build
         working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
           (cd ssh-client && npm ci && npm run build)
-          (cd vigor3912s/sdk && npm ci && npm run build)
+          (cd vigor3912s-sdk && npm ci && npm run build)
           (cd vigor3912s-mcp && npm ci && npm run build)
 
       - name: E2E against simulated DrayOS server (all tools, writes included)

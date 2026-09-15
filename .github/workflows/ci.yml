@@ -37,12 +37,10 @@ jobs:
           if ! git ls-remote --exit-code "${VIGOR_SDK_REPO}" "refs/heads/${VIGOR_SDK_REF}" >/dev/null 2>&1 \
             && ! git ls-remote --exit-code "${VIGOR_SDK_REPO}" "refs/tags/${VIGOR_SDK_REF}" >/dev/null 2>&1; then
             echo "::error::Missing sibling SDK repo at ${VIGOR_SDK_REPO} (ref ${VIGOR_SDK_REF})."
-            echo "::error::Create/publish jooservices/vigor3912s-sdk (or set vars.VIGOR_SDK_REPO) so CI can git clone file:../vigor3912s/sdk."
+            echo "::error::Create/publish jooservices/vigor3912s-sdk (or set vars.VIGOR_SDK_REPO) so CI can git clone file:../vigor3912s-sdk."
             exit 1
           fi
-          git clone --depth 1 --branch "${VIGOR_SDK_REF}" "${VIGOR_SDK_REPO}" vigor3912s-sdk-tmp
-          mkdir -p vigor3912s
-          mv vigor3912s-sdk-tmp vigor3912s/sdk
+          git clone --depth 1 --branch "${VIGOR_SDK_REF}" "${VIGOR_SDK_REPO}" vigor3912s-sdk
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -52,14 +50,14 @@ jobs:
           cache-dependency-path: |
             vigor3912s-mcp/package-lock.json
             ssh-client/package-lock.json
-            vigor3912s/sdk/package-lock.json
+            vigor3912s-sdk/package-lock.json
 
       - name: Install and build siblings
         working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
           (cd ssh-client && npm ci && npm run build)
-          (cd vigor3912s/sdk && npm ci && npm run build)
+          (cd vigor3912s-sdk && npm ci && npm run build)
           (cd vigor3912s-mcp && npm ci)
 
       - name: CI (lint + tests + build)
