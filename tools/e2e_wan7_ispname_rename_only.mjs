@@ -52,6 +52,14 @@ function signPreview(body) {
   );
 }
 
+function guessMode(wan) {
+  const m = String(wan?.mode ?? '').toLowerCase();
+  if (m.includes('pppoe')) return 1;
+  if (m.includes('static')) return 4;
+  if (m.includes('dhcp') || m.includes('dynamic')) return 3;
+  return 1;
+}
+
 try {
   await mcp.connect(transport);
   const beforeRes = await mcp.callTool({ name: 'show_status', arguments: {} });
@@ -59,9 +67,10 @@ try {
   const beforeBody = parseJsonText(textOf(beforeRes));
   const wan = (beforeBody.wans ?? []).find((w) => w.index === WAN);
   const beforeName = String(wan?.name ?? '');
-  console.log(`[before] WAN${WAN} name=${beforeName} mode=${wan?.mode}`);
+  const mode = guessMode(wan);
+  console.log(`[before] WAN${WAN} name=${beforeName} mode=${wan?.mode} using -M ${mode}`);
 
-  const args = { wan: WAN, mode: 1, ispName: TEMP };
+  const args = { wan: WAN, mode, ispName: TEMP };
   const previewRes = await mcp.callTool({ name: 'internet_set', arguments: args });
   if (previewRes.isError) throw new Error(textOf(previewRes));
   const body = JSON.parse(textOf(previewRes));

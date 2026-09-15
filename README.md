@@ -119,7 +119,7 @@ Every registry command becomes an MCP tool:
 
 ```bash
 cp .env.example .env
-# Set VIGOR_HOST / PORT / USER / PASSWORD
+# Set VIGOR_HOST / VIGOR_PORT / VIGOR_USER / VIGOR_PASSWORD
 # Pin the host key (required for live routers):
 ssh-keyscan -t rsa,ecdsa,ed25519 "$VIGOR_HOST" 2>/dev/null | ssh-keygen -lf - -E sha256
 # → put the SHA256:… value in VIGOR_SSH_HOST_FINGERPRINT
