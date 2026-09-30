@@ -28,8 +28,8 @@ afterEach(() => {
 });
 
 describe('SdkVigorClient', () => {
-  it('passes connection and host-key settings to the transport', () => {
-    new SdkVigorClient(config());
+  it('passes connection and host-key settings to the transport', async () => {
+    await new SdkVigorClient(config()).connect();
     expect(FakeSshClient.instances[0]?.options).toMatchObject({
       host: '192.168.1.1',
       port: 22,
@@ -40,8 +40,8 @@ describe('SdkVigorClient', () => {
     expect(FakeSshClient.instances[0]?.options).not.toHaveProperty('insecureSkipVerify');
   });
 
-  it('passes insecureSkipVerify when host verify is skipped', () => {
-    new SdkVigorClient(config({ sshInsecureSkipHostVerify: true }));
+  it('passes insecureSkipVerify when host verify is skipped', async () => {
+    await new SdkVigorClient(config({ sshInsecureSkipHostVerify: true })).connect();
     expect(FakeSshClient.instances[0]?.options).toMatchObject({
       insecureSkipVerify: true,
     });
@@ -65,7 +65,7 @@ describe('SdkVigorClient', () => {
     await expect(client.runCommand('show status && reboot')).rejects.toMatchObject({
       code: 'invalid',
     });
-    expect(FakeSshClient.instances[0]?.written).toEqual([]);
+    expect(FakeSshClient.instances.flatMap((instance) => instance.written)).toEqual([]);
   });
 
   it.each(['sys cfg default', 'sys halt', 'mngt rmtcfg enable', 'linux clean -w'])(
@@ -75,7 +75,7 @@ describe('SdkVigorClient', () => {
       await expect(client.runCommand(command)).rejects.toMatchObject({ code: 'invalid' });
       client.authorizeWrite(command);
       await expect(client.runWriteCommand(command)).rejects.toMatchObject({ code: 'invalid' });
-      expect(FakeSshClient.instances[0]?.written).toEqual([]);
+      expect(FakeSshClient.instances.flatMap((instance) => instance.written)).toEqual([]);
     },
   );
 
@@ -89,13 +89,45 @@ describe('SdkVigorClient', () => {
     });
   });
 
+  it('consumes authorization when a forbidden write attempt is refused', async () => {
+    const client = new SdkVigorClient(config());
+    client.authorizeWrite('sys halt');
+    await expect(client.runWriteCommand('sys halt')).rejects.toMatchObject({ code: 'invalid' });
+    await expect(client.runWriteCommand('sys halt')).rejects.toMatchObject({ code: 'unauthorized' });
+  });
+
+  it('keeps only the most recently authorized command', async () => {
+    const client = new SdkVigorClient(config());
+    client.authorizeWrite('sys name wan1 X');
+    client.authorizeWrite('sys name wan1 Y');
+    await expect(client.runWriteCommand('sys name wan1 X')).rejects.toMatchObject({
+      code: 'unauthorized',
+    });
+    await expect(client.runWriteCommand('sys name wan1 Y')).rejects.toMatchObject({
+      code: 'unauthorized',
+    });
+  });
+
+  it('consumes authorization when read-only mode refuses a write', async () => {
+    const cfg = config({ readOnly: true });
+    const client = new SdkVigorClient(cfg);
+    client.authorizeWrite('wan disable WAN1');
+    await expect(client.runWriteCommand('wan disable WAN1')).rejects.toMatchObject({
+      code: 'unauthorized',
+    });
+    cfg.readOnly = false;
+    await expect(client.runWriteCommand('wan disable WAN1')).rejects.toMatchObject({
+      code: 'unauthorized',
+    });
+  });
+
   it('refuses writes in read-only mode', async () => {
     const client = new SdkVigorClient(config({ readOnly: true }));
     client.authorizeWrite('wan disable WAN1');
     await expect(client.runWriteCommand('wan disable WAN1')).rejects.toMatchObject({
       code: 'unauthorized',
     });
-    expect(FakeSshClient.instances[0]?.written).toEqual([]);
+    expect(FakeSshClient.instances.flatMap((instance) => instance.written)).toEqual([]);
   });
 
   it.each(['connect', 'auth', 'timeout', 'closed', 'invalid'] as const)(
@@ -147,6 +179,7 @@ describe('SdkVigorClient', () => {
     const client = new SdkVigorClient(config());
     await expect(client.runWriteCommand('sys name wan1 x')).rejects.toMatchObject({
       code: 'unauthorized',
+      message: 'write command was not confirmed and was refused',
     });
   });
 

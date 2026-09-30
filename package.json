@@ -1,6 +1,6 @@
 {
   "name": "@jooservices/vigor3912s-mcp",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -37,5 +37,9 @@
     "ssh2@1.17.0": true,
     "cpu-features@0.0.10": true,
     "esbuild@0.28.2": true
+  },
+  "overrides": {
+    "fast-uri": "^3.1.8",
+    "ip-address": "^10.7.2"
   }
 }

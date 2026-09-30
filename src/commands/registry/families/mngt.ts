@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { W } from '../builders.js';
+import { S } from '../builders.js';
 import type { FamilyDef } from '../types.js';
 import { safeText } from '../../validators.js';
 
@@ -10,88 +10,78 @@ export const mngtFamily: FamilyDef = {
   family: 'mngt',
   desc: 'Management/access control (write).',
   commands: [
-    W(
-      'mngt_sshport',
-      'mngt',
-      (a) => `mngt sshport ${a.port}`,
-      { port: z.number().int().min(1).max(65535) },
-      'Set SSH port',
-    ),
-    W(
-      'mngt_telnetport',
-      'mngt',
-      (a) => `mngt telnetport ${a.port}`,
-      { port: z.number().int().min(1).max(65535) },
-      'Set telnet port',
-    ),
-    W(
-      'mngt_httpport',
-      'mngt',
-      (a) => `mngt httpport ${a.port}`,
-      { port: z.number().int().min(1).max(65535) },
-      'Set HTTP port',
-    ),
-    W(
-      'mngt_httpsport',
-      'mngt',
-      (a) => `mngt httpsport ${a.port}`,
-      { port: z.number().int().min(1).max(65535) },
-      'Set HTTPS port',
-    ),
-    W(
-      'mngt_sshtimeout',
-      'mngt',
-      (a) => `mngt sshtimeout ${a.seconds}`,
-      { seconds: z.number().int().min(60).max(300) },
-      'Set SSH session timeout in seconds (60-300)',
-    ),
-    W(
+    S('mngt_sshport', 'mngt', 'cli.mngt.sshport', 'Set SSH port', {
+      args: { port: z.number().int().min(1).max(65535) },
+      toInput: (a) => ({ port: a.port as number }),
+    }),
+    S('mngt_telnetport', 'mngt', 'cli.mngt.telnetport', 'Set telnet port', {
+      args: { port: z.number().int().min(1).max(65535) },
+      toInput: (a) => ({ port: a.port as number }),
+    }),
+    S('mngt_httpport', 'mngt', 'cli.mngt.httpport', 'Set HTTP port', {
+      args: { port: z.number().int().min(1).max(65535) },
+      toInput: (a) => ({ port: a.port as number }),
+    }),
+    S('mngt_httpsport', 'mngt', 'cli.mngt.httpsport', 'Set HTTPS port', {
+      args: { port: z.number().int().min(1).max(65535) },
+      toInput: (a) => ({ port: a.port as number }),
+    }),
+    S('mngt_sshtimeout', 'mngt', 'cli.mngt.sshtimeout', 'Set SSH session timeout in seconds (60-300)', {
+      args: { seconds: z.number().int().min(60).max(300) },
+      toInput: (a) => ({ seconds: a.seconds as number }),
+    }),
+    S(
       'mngt_telnettimeout',
       'mngt',
-      (a) => `mngt telnettimeout ${a.seconds}`,
-      { seconds: z.number().int().min(60).max(300) },
+      'cli.mngt.telnettimeout',
       'Set telnet session timeout in seconds (60-300)',
+      {
+        args: { seconds: z.number().int().min(60).max(300) },
+        toInput: (a) => ({ seconds: a.seconds as number }),
+      },
     ),
-    W(
-      'mngt_noping',
-      'mngt',
-      (a) => `mngt noping ${String(a.action)}`,
-      { action: nopingAction },
-      'Control LAN-to-WAN ping forward (on|off|viewlog|clearlog)',
-    ),
-    W(
+    S('mngt_noping', 'mngt', 'cli.mngt.noping', 'Control LAN-to-WAN ping forward (on|off|viewlog|clearlog)', {
+      args: { action: nopingAction },
+      toInput: (a) => ({ action: a.action as string }),
+    }),
+    S(
       'mngt_defenseworm',
       'mngt',
-      (a) => {
-        if (a.action === 'add' || a.action === 'del') {
-          if (a.port == null) {
-            throw new Error('port is required when action is add or del');
-          }
-          return `mngt defenseworm ${String(a.action)} ${String(a.port)}`;
-        }
-        return `mngt defenseworm ${String(a.action)}`;
-      },
-      {
-        action: defensewormAction,
-        port: z.number().int().min(1).max(65535).optional(),
-      },
+      'cli.mngt.defenseworm',
       'Worm defense (on|off|viewlog|clearlog|add|del); add/del require port',
+      {
+        args: {
+          action: defensewormAction,
+          port: z.number().int().min(1).max(65535).optional(),
+        },
+        toInput: (a) => {
+          const action = a.action as string;
+          if (action === 'add' || action === 'del') {
+            if (a.port == null) throw new Error('port is required when action is add or del');
+            return { action, port: a.port as number };
+          }
+          return { action };
+        },
+      },
     ),
-    W(
+    S(
       'mngt_bfp',
       'mngt',
-      (a) => `mngt bfp ${(a.args as string[]).join(' ')}`,
-      {
-        args: z
-          .array(safeText())
-          .min(1)
-          .refine(
-            (tokens) =>
-              tokens.every((t) => !t.startsWith('-') || ['-e', '-s', '-l', '-p', '-v'].includes(t)),
-            { message: 'mngt bfp flags must be one of -e -s -l -p -v' },
-          ),
-      },
+      'cli.mngt.bfp',
       'Brute-force protection flags (e.g. args=["-e","1"])',
+      {
+        args: {
+          args: z
+            .array(safeText())
+            .min(1)
+            .refine(
+              (tokens) =>
+                tokens.every((t) => !t.startsWith('-') || ['-e', '-s', '-l', '-p', '-v'].includes(t)),
+              { message: 'mngt bfp flags must be one of -e -s -l -p -v' },
+            ),
+        },
+        toInput: (a) => ({ args: a.args as string[] }),
+      },
     ),
   ],
 };

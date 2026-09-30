@@ -20,6 +20,10 @@
 
 ## Write / confirm issues
 
+**The server stops responding after a large output**
+- The SDK closed the failed command session. The next tool call should create
+  a fresh session automatically. Narrow the query if the output limit repeats.
+
 **"confirmation … not found / used / expired" / invalid signature**
 - Approvals are single-use and expire after 60s. Request a new preview, sign
   promptly with `node tools/approve.mjs <confirmation_id>`, and re-call with
@@ -32,6 +36,20 @@
 **"write command was not confirmed and was refused"**
 - The write was not authorized (signature path failed). Get a fresh preview
   and a new signature.
+
+**"command does not match what the assistant requested — NOT signed"**
+- Re-entry did not reproduce the exact command requested in the preview. Do
+  not retry with guessed values; request a fresh preview and check each hidden
+  field value carefully.
+
+**"Secret fields require interactive approval; no TTY is available."**
+- Run `node tools/approve.mjs <confirmation_id>` in an interactive terminal.
+  Redacted intents cannot be signed through a pipe or background process.
+
+**Raw payload approval is refused**
+- `--payload` is available only with `--blind` and prints a warning because it
+  bypasses command re-entry verification. Prefer
+  `node tools/approve.mjs <confirmation_id>`.
 
 **Missing `VIGOR_APPROVE_PUBKEY`**
 - Required unless `VIGOR_READ_ONLY=true`. Run `node tools/approve-keygen.mjs`
@@ -60,8 +78,9 @@
 
 - Command output/syntax can change between firmware versions. This project was
   verified on **4.4.7_RC2**. If your router is on a different version, verify
-  with `?`, `<family> ?`, `<cmd> ?`, and re-run the read-only E2E
-  (`npm run e2e`).
+  with `?`, `<family> ?`, `<cmd> ?`, and re-run the local read-only E2E
+  (`npm run e2e`). Use `npm run e2e:testing` for the full tool/write path
+  against the simulated DrayOS server.
 
 ## Known limits
 
@@ -69,5 +88,5 @@
   not automate config backup.
 - Write-command argument syntax for some commands is best-effort (from recon +
   docs). The preview always shows the exact CLI before you confirm.
-- The E2E suite runs read tools against the real router only; write behavior is
-  covered by unit tests and the fake-DrayOS E2E.
+- The real-router E2E runs read tools only; write behavior is covered by unit
+  tests and the fake-DrayOS E2E, which may exercise confirmed writes.

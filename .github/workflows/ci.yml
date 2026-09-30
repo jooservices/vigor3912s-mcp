@@ -26,9 +26,9 @@ jobs:
       - name: Clone sibling dependencies
         working-directory: ${{ github.workspace }}
         env:
-          # Pin or override via repo variable; default develop tip (shallow).
-          SSH_CLIENT_REF: ${{ vars.SSH_CLIENT_REF || 'develop' }}
-          VIGOR_SDK_REF: ${{ vars.VIGOR_SDK_REF || 'develop' }}
+          # Pin or override via repo variable; default to tested releases.
+          SSH_CLIENT_REF: ${{ vars.SSH_CLIENT_REF || 'v1.2.0' }}
+          VIGOR_SDK_REF: ${{ vars.VIGOR_SDK_REF || 'v2.0.0' }}
           VIGOR_SDK_REPO: ${{ vars.VIGOR_SDK_REPO || 'https://github.com/jooservices/vigor3912s-sdk.git' }}
         run: |
           set -euo pipefail
@@ -41,6 +41,15 @@ jobs:
             exit 1
           fi
           git clone --depth 1 --branch "${VIGOR_SDK_REF}" "${VIGOR_SDK_REPO}" vigor3912s-sdk
+
+      - name: Verify sibling versions
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          ssh_version=$(node -p "require('./ssh-client/package.json').version")
+          sdk_version=$(node -p "require('./vigor3912s-sdk/package.json').version")
+          test "$ssh_version" = '1.2.0' || { echo "::error::Expected ssh-client 1.2.0, got $ssh_version"; exit 1; }
+          test "$sdk_version" = '2.0.0' || { echo "::error::Expected vigor3912s-sdk 2.0.0, got $sdk_version"; exit 1; }
 
       - name: Setup Node
         uses: actions/setup-node@v4

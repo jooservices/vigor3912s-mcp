@@ -4,13 +4,19 @@ import { VigorCommandError, type VigorErrorCode } from './client.js';
 export function mapSdkError(err: unknown): VigorCommandError {
   if (err instanceof VigorCommandError) return err;
   if (err instanceof Vigor3912SError) {
+    if (err.code === sdkErrorCodes.outputLimitExceeded) {
+      return new VigorCommandError(
+        'invalid',
+        `${err.message} The output limit was reached; narrow the query and try again.`,
+      );
+    }
     const code: VigorErrorCode =
       err.code === sdkErrorCodes.executionTimeout
         ? 'timeout'
         : err.code === sdkErrorCodes.sessionClosed
           ? 'closed'
           : err.code === sdkErrorCodes.commandFramingRejected ||
-              err.code === sdkErrorCodes.outputLimitExceeded
+              err.code === sdkErrorCodes.commandRejected
             ? 'invalid'
             : 'connect';
     return new VigorCommandError(code, err.message);

@@ -4,6 +4,13 @@ import type {
   VigorClient,
 } from '../ssh/client.js';
 import { VigorCommandError } from '../ssh/client.js';
+import type { AnyOperation } from '../sdk/operation-index.js';
+import { operationFor } from '../sdk/operation-index.js';
+
+/** Test helper: applies `op.buildFrames(input)` the same way `SdkVigorClient` does. */
+function renderFrames(op: AnyOperation, input: unknown): readonly { readonly command: string }[] {
+  return op.buildFrames(input);
+}
 
 /**
  * In-memory VigorClient for MCP unit tests (no SSH).
@@ -12,9 +19,11 @@ import { VigorCommandError } from '../ssh/client.js';
 export class FakeVigorClient implements VigorClient {
   static instances: FakeVigorClient[] = [];
   static script: Record<string, string | string[]> = {};
+  static readSignal: AbortSignal | undefined;
+  static readHook: ((command: string, options?: RunCommandOptions) => Promise<string>) | undefined;
 
   readonly written: string[] = [];
-  private writeAuthorized = new Set<string>();
+  private writeAuthorized: string | null = null;
   private lastTiming: CommandTiming | null = null;
   private closed = false;
 
@@ -35,26 +44,76 @@ export class FakeVigorClient implements VigorClient {
     /* no-op */
   }
 
-  async runCommand(command: string, _opts?: RunCommandOptions): Promise<string> {
+  async runCommand(command: string, opts?: RunCommandOptions): Promise<string> {
+    FakeVigorClient.readSignal = opts?.signal;
     if (this.closed) throw new VigorCommandError('closed', 'client is closed');
+    if (FakeVigorClient.readHook) return FakeVigorClient.readHook(command, opts);
+    return this.exec(command);
+  }
+
+  async runOperation(manifestId: string, input: unknown, opts?: RunCommandOptions): Promise<string> {
+    FakeVigorClient.readSignal = opts?.signal;
+    const op = operationFor(manifestId);
+    if (!op) {
+      throw new VigorCommandError('invalid', `unknown SDK operation and was refused: ${manifestId}`);
+    }
+    if (op.classification !== 'read') {
+      throw new VigorCommandError(
+        'invalid',
+        `operation "${manifestId}" is not a read operation and was refused`,
+      );
+    }
+    const command = renderFrames(op, input)
+      .map((f) => f.command)
+      .join('\n');
+    if (this.closed) throw new VigorCommandError('closed', 'client is closed');
+    if (FakeVigorClient.readHook) return FakeVigorClient.readHook(command, opts);
     return this.exec(command);
   }
 
   authorizeWrite(command: string): void {
-    this.writeAuthorized.add(command);
+    this.writeAuthorized = command;
   }
 
   async runWriteCommand(command: string, _opts?: RunCommandOptions): Promise<string> {
-    if (this.readOnly) {
-      throw new VigorCommandError('unauthorized', 'read-only mode is enabled; write commands are refused');
-    }
-    if (!this.writeAuthorized.has(command)) {
+    const authorized = this.writeAuthorized === command;
+    this.writeAuthorized = null;
+    if (!authorized) {
       throw new VigorCommandError(
         'unauthorized',
         `write command was not confirmed and was refused: ${command}`,
       );
     }
-    this.writeAuthorized.delete(command);
+    if (this.readOnly) {
+      throw new VigorCommandError('unauthorized', 'read-only mode is enabled; write commands are refused');
+    }
+    if (this.closed) throw new VigorCommandError('closed', 'client is closed');
+    return this.exec(command);
+  }
+
+  async runWriteOperation(
+    manifestId: string,
+    input: unknown,
+    _opts?: RunCommandOptions,
+  ): Promise<string> {
+    const authorizedCommand = this.writeAuthorized;
+    this.writeAuthorized = null;
+    const op = operationFor(manifestId);
+    if (!op) {
+      throw new VigorCommandError('invalid', `unknown SDK operation and was refused: ${manifestId}`);
+    }
+    const command = renderFrames(op, input)
+      .map((f) => f.command)
+      .join('\n');
+    if (authorizedCommand !== command) {
+      throw new VigorCommandError(
+        'unauthorized',
+        `write command was not confirmed and was refused: ${command}`,
+      );
+    }
+    if (this.readOnly) {
+      throw new VigorCommandError('unauthorized', 'read-only mode is enabled; write commands are refused');
+    }
     if (this.closed) throw new VigorCommandError('closed', 'client is closed');
     return this.exec(command);
   }

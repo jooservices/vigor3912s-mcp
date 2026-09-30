@@ -1,46 +1,39 @@
 import { z } from 'zod';
-import { W } from '../builders.js';
+import { S } from '../builders.js';
 import type { FamilyDef } from '../types.js';
 import { noControl } from '../../validators.js';
 
 /**
  * Aligns with SDK `UserManageInput`: free-form flag text stays in `param`
- * (SDK YAGNI); tools map 1:1 to action variants.
+ * (SDK YAGNI); tools map 1:1 to action variants of the single `cli.user`
+ * operation — each tool pins one `action`, so each binding is partial.
  */
 export const userFamily: FamilyDef = {
   family: 'user',
   desc: 'User management.',
   commands: [
-    W(
-      'user_account',
-      'user',
-      (a) => `user account ${String(a.userName)} ${String(a.param)}`,
-      { userName: noControl(63), param: noControl() },
-      'Configure user account (SDK cli.user action=account)',
-    ),
-    W(
-      'user_edit',
-      'user',
-      (a) => `user edit ${String(a.profileIdx)} ${String(a.param)}`,
-      {
-        profileIdx: z.number().int().min(0),
-        param: noControl(),
-      },
-      'Edit user profile (SDK cli.user action=edit)',
-    ),
-    W(
-      'user_set',
-      'user',
-      (a) => `user set ${String(a.param)}`,
-      { param: noControl() },
-      'User general setup (SDK cli.user action=set)',
-    ),
-    W(
-      'user_setdefault',
-      'user',
-      () => 'user setdefault',
-      {},
-      'Reset all user profiles (SDK cli.user action=setdefault)',
-    ),
+    S('user_account', 'user', 'cli.user', 'Configure user account (SDK cli.user action=account)', {
+        args: { userName: noControl(63), param: noControl() },
+        toInput: (a) => ({ action: 'account', userName: a.userName, param: a.param }),
+        partial: true,
+      }),
+    S('user_edit', 'user', 'cli.user', 'Edit user profile (SDK cli.user action=edit)', {
+        args: {
+          profileIdx: z.number().int().min(0),
+          param: noControl(),
+        },
+        toInput: (a) => ({ action: 'edit', profileIdx: a.profileIdx, param: a.param }),
+        partial: true,
+      }),
+    S('user_set', 'user', 'cli.user', 'User general setup (SDK cli.user action=set)', {
+        args: { param: noControl() },
+        toInput: (a) => ({ action: 'set', param: a.param }),
+        partial: true,
+      }),
+    S('user_setdefault', 'user', 'cli.user', 'Reset all user profiles (SDK cli.user action=setdefault)', {
+        args: {},
+        toInput: () => ({ action: 'setdefault' }),
+        partial: true,
+      }),
   ],
 };

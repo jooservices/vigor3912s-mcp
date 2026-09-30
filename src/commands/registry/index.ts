@@ -1,4 +1,5 @@
-import { applyWritePolicy } from '../write-policy.js';
+import { voidOperationForCommand } from '../../sdk/void-operation-index.js';
+import { applyToolPolicy } from '../tool-policy.js';
 import type { CommandDef, FamilyDef } from './types.js';
 import { showFamily } from './families/show.js';
 import { sysFamily } from './families/sys.js';
@@ -42,7 +43,7 @@ import { ldapFamily } from './families/ldap.js';
 import { tacacsplusFamily } from './families/tacacsplus.js';
 import { portmaptimeFamily } from './families/portmaptime.js';
 import { swmFamily } from './families/swm.js';
-import { buildSdkVoidFamily } from './families/sdk-void.js';
+import { buildSdkGeneratedFamily } from './families/sdk-generated.js';
 
 export type { CommandDef, CommandKind, FamilyDef } from './types.js';
 
@@ -92,21 +93,64 @@ const CURATED_REGISTRY: FamilyDef[] = [
   swmFamily,
 ];
 
+/**
+ * Auto-link curated zero-arg tools whose rendered CLI matches a void SDK
+ * operation, so they execute via `sdk.invoke()` instead of raw `execute()`.
+ * Tool ids, args, and descriptions are unchanged — only `cmd.sdk` is added.
+ */
+const SDK_VOID_BINDING_EXCLUSIONS = new Set(['local8021x_show_local_cer']);
+
+export function attachSdkVoidBindings(families: readonly FamilyDef[]): FamilyDef[] {
+  return families.map((family) => ({
+    ...family,
+    commands: family.commands.map((cmd) => {
+      if (cmd.sdk || SDK_VOID_BINDING_EXCLUSIONS.has(cmd.id) || Object.keys(cmd.args).length > 0) {
+        return cmd;
+      }
+      let cli: string;
+      try {
+        cli = cmd.render({});
+      } catch {
+        return cmd;
+      }
+      const op = voidOperationForCommand(cli);
+      if (!op) return cmd;
+      return { ...cmd, sdk: { manifestId: op.manifestId } };
+    }),
+  }));
+}
+
+const LINKED_CURATED_REGISTRY: FamilyDef[] = attachSdkVoidBindings(CURATED_REGISTRY);
+
 /** Full command registry: curated families + auto void SDK coverage. */
-export const REGISTRY: FamilyDef[] = [...CURATED_REGISTRY, buildSdkVoidFamily(CURATED_REGISTRY)];
+export const REGISTRY: FamilyDef[] = [
+  ...LINKED_CURATED_REGISTRY,
+  buildSdkGeneratedFamily(LINKED_CURATED_REGISTRY),
+];
 
-export function allCommands(): CommandDef[] {
-  return REGISTRY.flatMap((f) => f.commands).map(applyWritePolicy);
+const ALL_COMMANDS: readonly CommandDef[] = Object.freeze(
+  REGISTRY.flatMap((family) => family.commands).map(applyToolPolicy),
+);
+const COMMANDS_BY_ID = new Map(ALL_COMMANDS.map((command) => [command.id, command]));
+const READ_COMMANDS: readonly CommandDef[] = Object.freeze(
+  ALL_COMMANDS.filter((command) => command.kind === 'read'),
+);
+const WRITE_COMMANDS: readonly CommandDef[] = Object.freeze(
+  ALL_COMMANDS.filter((command) => command.kind === 'write'),
+);
+
+export function allCommands(): readonly CommandDef[] {
+  return ALL_COMMANDS;
 }
 
-export function readCommands(): CommandDef[] {
-  return allCommands().filter((c) => c.kind === 'read');
+export function readCommands(): readonly CommandDef[] {
+  return READ_COMMANDS;
 }
 
-export function writeCommands(): CommandDef[] {
-  return allCommands().filter((c) => c.kind === 'write');
+export function writeCommands(): readonly CommandDef[] {
+  return WRITE_COMMANDS;
 }
 
 export function findCommand(id: string): CommandDef | undefined {
-  return allCommands().find((c) => c.id === id);
+  return COMMANDS_BY_ID.get(id);
 }

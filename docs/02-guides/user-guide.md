@@ -6,7 +6,8 @@ operate the Vigor 3912S router.
 ## 1. Requirements
 
 - Node.js >= 24.21 \< 25 (see `package.json` `engines` / `.nvmrc`)
-- Sibling packages for local install: `../ssh-client`, `../vigor3912s-sdk`
+- Compatible sibling packages for local install: `../ssh-client` v1.2.0 or
+  later and `../vigor3912s-sdk` v2.0.0 or later
 - Router with SSH enabled (`System Maintenance >> Management` → SSH), reachable
   on the LAN
 - Admin password and **SSH host fingerprint** in `.env`
@@ -50,7 +51,7 @@ server. Reference the tool ids from
 
 ## 4. Reading the router
 
-Read tools (150) run freely when exposed and need no confirmation:
+Read tools (220) run freely when exposed and need no confirmation:
 
 > *get the WAN status from the router*
 > *show the DHCP leases*
@@ -60,7 +61,7 @@ Each returns structured data (where a parser exists) plus the raw CLI output.
 
 ## 5. Making a change (write flow)
 
-Write tools (152) never run automatically. The flow is always:
+Write tools (446) never run automatically. The flow is always:
 
 **Step 1 — request the change.** The tool returns a **preview** with the exact
 CLI command and signing fields:
@@ -88,11 +89,20 @@ CLI command and signing fields:
 node tools/approve.mjs <confirmation_id>
 ```
 
+If the preview contains markers such as `<redacted:param>`, the CLI asks you
+to re-enter each secret with input hidden. It verifies that the restored
+command matches the requested digest before signing. The pending file stores
+only the marker and field names, never the entered values. This prompt requires
+an interactive TTY; the CLI refuses to sign a redacted intent without one.
+Signing a raw `sign_payload` skips that verification and requires an explicit
+warning-bearing blind mode: `node tools/approve.mjs --payload <file|-> --blind`.
+
 Paste the printed `signature` into the next tool call (same args +
 `confirmation_id` + `signature`). Dual-tier writes also need
 `"acknowledge": true`.
 
-The model cannot forge a valid signature without your private key.
+The model cannot forge a valid signature without your private key. Approval
+intents are single-use and expire after 60 seconds.
 The result reports the change, a **before/after snapshot** (when a snapshot
 read is defined), and the `sys commit` outcome.
 
@@ -116,7 +126,8 @@ read is defined), and the `sys commit` outcome.
   an explicit `acknowledge: true`.
 - `sys commit` runs automatically after a successful write (unless the command
   is `skipCommit`, e.g. reboot).
-- Every request is logged locally; secrets are redacted.
+- Every request is logged locally; secret values are redacted from logs and
+  approval previews.
 
 ## 8. Read-only mode
 

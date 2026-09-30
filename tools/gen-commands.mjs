@@ -19,7 +19,7 @@ const argsOf = (c) => Object.keys(c.args).join(', ') || '-';
 const rows = allCommands()
   .map(
     (c) =>
-      `| \`${c.id}\` | ${c.kind} | ${c.family} | ${flag(c.dangerous)} | ${flag(c.affectsNetwork)} | ${argsOf(c)} | ${c.snapshotRead ?? '-'} | ${c.secretArgs?.join(', ') ?? '-'} | ${c.skipCommit ? 'yes' : ''} |`,
+      `| \`${c.id}\` | ${c.kind} | ${c.family} | ${flag(c.confirm === 'dual')} | ${flag(c.affectsNetwork)} | ${argsOf(c)} | ${c.snapshotRead ?? '-'} | ${c.secretArgs?.join(', ') ?? '-'} | ${c.skipCommit ? 'yes' : ''} |`,
   )
   .join('\n');
 
@@ -55,6 +55,15 @@ ${rows}
   router state in the audit log.
 - **Secret args**: values redacted to \`***\` in logs.
 - **Skip commit**: no auto \`sys commit\` after this write.
+
+## Security
+
+SDK-backed tools automatically classify string fields with secret-bearing
+names and redact them from previews, pending approvals and request/audit
+metadata. Writes with secret arguments do not persist router output. Curated
+secret fields remain explicitly listed in the write policy. This MCP-side
+heuristic stays in place until the SDK publishes a schema-level \`sensitive\`
+flag.
 `;
 fs.writeFileSync(out, md);
 console.log(`wrote ${out} (${allCommands().length} commands)`);

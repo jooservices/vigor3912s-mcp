@@ -1,36 +1,7 @@
 import { operations } from '@jooservices/vigor3912s-sdk/operations';
+import { type AnyOperation, walkOperations } from './operation-index.js';
 
-type AnyOperation = {
-  readonly manifestId: string;
-  readonly classification: string;
-  readonly buildFrames: (input: unknown) => readonly { readonly command: string }[];
-  readonly parse: (exchanges: unknown) => unknown;
-};
-
-function isOperation(value: unknown): value is AnyOperation {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'manifestId' in value &&
-    typeof (value as AnyOperation).buildFrames === 'function' &&
-    typeof (value as AnyOperation).parse === 'function'
-  );
-}
-
-function* walkOperations(node: unknown): Generator<AnyOperation> {
-  if (!node || typeof node !== 'object') return;
-  if (Array.isArray(node)) {
-    for (const item of node) yield* walkOperations(item);
-    return;
-  }
-  if (isOperation(node)) {
-    yield node;
-    return;
-  }
-  for (const value of Object.values(node)) {
-    yield* walkOperations(value);
-  }
-}
+export type { AnyOperation };
 
 /**
  * Index of SDK typed operations that accept `undefined` input and emit exactly

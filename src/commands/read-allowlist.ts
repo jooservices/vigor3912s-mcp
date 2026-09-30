@@ -7,6 +7,10 @@ import { readCommands } from './registry/index.js';
  * command's Zod schema:
  * - `host` — ping / tracert
  * - enum / literal args — expanded to exact allowlist entries (cartesian product)
+ *
+ * Parameterized SDK-backed reads with enum/literal/host arguments are also
+ * expanded here for callers that use the raw read path directly. SDK-backed
+ * reads with non-expandable arguments still run through `runOperation()`.
  */
 
 const SESSION_EXACT = new Set<string>(['', 'exit']);
@@ -84,7 +88,6 @@ function buildHostArgMatchers(): HostArgMatcher[] {
   for (const cmd of readCommands()) {
     const keys = Object.keys(cmd.args);
     if (keys.length === 0) continue;
-
     if (keys.length === 1 && keys[0] === 'host') {
       const hostSchema = cmd.args.host as z.ZodType<string>;
       const sampleHost = HOST_PROBES.find((h) => hostSchema.safeParse(h).success);
@@ -103,13 +106,13 @@ function buildHostArgMatchers(): HostArgMatcher[] {
     }
 
     const valueLists: (readonly unknown[])[] = [];
+    let expandable = true;
     for (const key of keys) {
       const schema = cmd.args[key] as z.ZodType<unknown>;
       const values = extractEnumValues(schema);
       if (!values || values.length === 0) {
-        throw new Error(
-          `read-allowlist: parameterized read "${cmd.id}" arg "${key}" must be Zod enum/literal/union-of-literals or host`,
-        );
+        expandable = false;
+        break;
       }
       for (const value of values) {
         if (typeof value === 'string' && /[\s;|&`$]/.test(value)) {
@@ -117,6 +120,12 @@ function buildHostArgMatchers(): HostArgMatcher[] {
         }
       }
       valueLists.push(values);
+    }
+    if (!expandable) {
+      if (cmd.sdk) continue;
+      throw new Error(
+        `read-allowlist: parameterized read "${cmd.id}" args must be Zod enum/literal/union-of-literals or host`,
+      );
     }
     for (const args of expandArgCombos(keys, valueLists)) {
       READ_EXACT.add(cmd.render(args));

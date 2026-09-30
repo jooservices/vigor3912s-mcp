@@ -1,8 +1,23 @@
-import { describe, expect, it } from 'vitest';
-import { findCommand, readCommands, writeCommands } from './registry/index.js';
-import { WRITE_POLICY, resolveConfirmTier } from './write-policy.js';
+import { describe, expect, it, vi } from 'vitest';
+import { operationFor } from '../sdk/operation-index.js';
+import { allCommands, findCommand, readCommands, writeCommands } from './registry/index.js';
+import { applyToolPolicy, READ_POLICY, WRITE_POLICY, resolveConfirmTier } from './tool-policy.js';
 
 describe('WRITE_POLICY / ConfirmTier', () => {
+  it('marks the owner-approved sensitive read output list', () => {
+    const ids = [
+      'ddns_show', 'ddns_show_all', 'radius_show', 'radius_external_view',
+      'radius_external_viewprofile', 'ldap_view', 'tacacsplus_view', 'vpn_wg_show',
+      'usb_user_list', 'csm_appe_config', 'ip_ospf_cfg_show', 'mngt_rmtcfg_status', 'sys_cfg_status',
+    ];
+    const registeredReads = new Set(readCommands().map((command) => command.id));
+    expect(Object.keys(READ_POLICY).sort()).toEqual(ids.sort());
+    for (const id of ids) {
+      expect(registeredReads.has(id), `unknown sensitive read tool: ${id}`).toBe(true);
+      expect(readCommands().find((command) => command.id === id)?.sensitiveOutput).toBe(true);
+    }
+  });
+
   it('only references write tools that exist in the registry', () => {
     const ids = new Set(writeCommands().map((c) => c.id));
     for (const id of Object.keys(WRITE_POLICY)) {
@@ -16,10 +31,52 @@ describe('WRITE_POLICY / ConfirmTier', () => {
     expect(resolveConfirmTier('write', { confirm: 'dual' })).toBe('dual');
   });
 
+  it('derives dual confirmation from destructive SDK classification', () => {
+    expect(operationFor('cli.fs.format')?.classification).toBe('destructive');
+    const cmd = applyToolPolicy({
+      id: 'test_curated_destructive',
+      kind: 'write',
+      sdk: { manifestId: 'cli.fs.format' },
+    });
+
+    expect(cmd.confirm).toBe('dual');
+  });
+
+  it('merges SDK-derived secret arguments with explicit write policy', () => {
+    const cmd = applyToolPolicy({
+      id: 'ip_bgp',
+      kind: 'write',
+      secretArgs: ['community'],
+    });
+    expect(cmd.secretArgs).toEqual(['community', 'key']);
+  });
+
+  it('keeps resolved policies stable after the registry is re-imported', async () => {
+    const snapshot = (commands: ReturnType<typeof allCommands>) =>
+      commands.map(({ id, confirm, affectsNetwork, secretArgs, snapshotRead, skipCommit }) => ({
+        id,
+        confirm,
+        affectsNetwork,
+        secretArgs,
+        snapshotRead,
+        skipCommit,
+      }));
+    const before = snapshot(allCommands());
+    const policyIds = Object.keys(WRITE_POLICY).sort();
+
+    vi.resetModules();
+    const [{ allCommands: reloadedCommands }, { WRITE_POLICY: reloadedPolicy }] = await Promise.all([
+      import('./registry/index.js'),
+      import('./tool-policy.js'),
+    ]);
+
+    expect(snapshot(reloadedCommands())).toEqual(before);
+    expect(Object.keys(reloadedPolicy).sort()).toEqual(policyIds);
+  });
+
   it('merges confirm tier onto findCommand / writeCommands', () => {
     const passwd = findCommand('sys_passwd');
     expect(passwd?.confirm).toBe('dual');
-    expect(passwd?.dangerous).toBe(true);
     expect(passwd?.secretArgs).toEqual(['old', 'new']);
 
     const ipAddr = findCommand('ip_addr');
@@ -30,14 +87,12 @@ describe('WRITE_POLICY / ConfirmTier', () => {
     const commit = findCommand('sys_commit');
     expect(commit?.confirm).toBe('confirm');
     expect(commit?.skipCommit).toBe(true);
-    expect(commit?.dangerous).toBe(false);
 
     const wanStatus = findCommand('wan_status');
     expect(wanStatus?.confirm).toBe('auto');
-    expect(wanStatus?.dangerous).toBe(false);
   });
 
-  it('marks dual-confirm tools (compat dangerous=true)', () => {
+  it('marks dual-confirm tools', () => {
     const mustBeDual = [
       'sys_passwd',
       'sys_reboot',
@@ -56,7 +111,6 @@ describe('WRITE_POLICY / ConfirmTier', () => {
     ];
     for (const id of mustBeDual) {
       expect(findCommand(id)?.confirm, id).toBe('dual');
-      expect(findCommand(id)?.dangerous, id).toBe(true);
     }
   });
 
@@ -71,6 +125,26 @@ describe('WRITE_POLICY / ConfirmTier', () => {
     expect(findCommand('ldap_set')?.secretArgs).toEqual(['value']);
     expect(findCommand('tacacsplus_set')?.secretArgs).toEqual(['secret']);
     expect(findCommand('vpn_setup')?.secretArgs).toEqual(['param']);
+  });
+
+  it('redacts credentials from SDK-generated write tools', () => {
+    const expected: Record<string, string[]> = {
+      ddns_set: ['password'],
+      ddns_set_update: ['password'],
+      internet: ['password'],
+      ip6_internet: ['password'],
+      ip_bgp: ['key'],
+      mngt_certimport: ['password'],
+      radius_client_add: ['secret'],
+      service_login: ['password'],
+      sdk_linux_setlinuxip: ['password'],
+      sys_adminuser: ['password'],
+      user: ['param', 'userName'],
+      vpn_wg_keyset: ['privateKey'],
+    };
+    for (const [id, secretArgs] of Object.entries(expected)) {
+      expect(findCommand(id)?.secretArgs, id).toEqual(secretArgs);
+    }
   });
 
   it('points snapshotRead at existing read tools', () => {

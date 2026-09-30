@@ -11,13 +11,11 @@ export default defineConfig({
       include: ['src/**/*.ts'],
       exclude: [
         'src/**/*.test.ts',
-        // Curated catalog + stdio entry: e2e/build surface, not unit-branch dense.
-        'src/commands/registry/**',
+        // Curated static family catalogs; dynamic SDK generation is covered.
+        'src/commands/registry/families/!(sdk-generated).ts',
         'src/index.ts',
         // Test doubles — not product code.
         'src/test/**',
-        // Registration glue: covered by build tests + e2e.
-        'src/commands/build.ts',
       ],
       thresholds: {
         statements: 90,

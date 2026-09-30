@@ -8,6 +8,8 @@
  * file owns AI/ops confirmation UX.
  */
 
+import { operationFor } from '../sdk/operation-index.js';
+
 export type ConfirmTier = 'auto' | 'confirm' | 'dual';
 
 export interface WritePolicy {
@@ -28,24 +30,40 @@ export interface WritePolicy {
   skipCommit?: boolean;
 }
 
+export const READ_POLICY: Readonly<Record<string, { sensitiveOutput?: true }>> = {
+  ddns_show: { sensitiveOutput: true },
+  ddns_show_all: { sensitiveOutput: true },
+  radius_show: { sensitiveOutput: true },
+  radius_external_view: { sensitiveOutput: true },
+  radius_external_viewprofile: { sensitiveOutput: true },
+  ldap_view: { sensitiveOutput: true },
+  tacacsplus_view: { sensitiveOutput: true },
+  vpn_wg_show: { sensitiveOutput: true },
+  usb_user_list: { sensitiveOutput: true },
+  csm_appe_config: { sensitiveOutput: true },
+  ip_ospf_cfg_show: { sensitiveOutput: true },
+  mngt_rmtcfg_status: { sensitiveOutput: true },
+  sys_cfg_status: { sensitiveOutput: true },
+};
+
 /** Resolved policy fields merged onto CommandDef. */
 export interface ResolvedToolPolicy {
   confirm: ConfirmTier;
-  /** Compatibility alias: true when confirm === 'dual'. */
-  dangerous: boolean;
   affectsNetwork?: boolean;
   secretArgs?: string[];
   snapshotRead?: string;
   skipCommit?: boolean;
+  sensitiveOutput?: boolean;
 }
 
 export function resolveConfirmTier(
   kind: 'read' | 'write',
   policy: WritePolicy | undefined,
+  sdkClassification?: string,
 ): ConfirmTier {
   if (kind === 'read') return 'auto';
   // Writes never skip the signature gate via `auto`.
-  if (policy?.confirm === 'dual') return 'dual';
+  if (policy?.confirm === 'dual' || sdkClassification === 'destructive') return 'dual';
   return 'confirm';
 }
 
@@ -54,13 +72,6 @@ export function resolveConfirmTier(
  * Prefer listing lockout and secret-bearing tools here over burying flags
  * inside W(...) in the registry.
  */
-const EXTRA_WRITE_POLICY: Record<string, WritePolicy> = {};
-
-/** Register policy for generated tools (e.g. sdk_void destructive). */
-export function registerExtraWritePolicy(id: string, policy: WritePolicy): void {
-  EXTRA_WRITE_POLICY[id] = policy;
-}
-
 export const WRITE_POLICY: Readonly<Record<string, WritePolicy>> = {
   // --- sys ---
   sys_passwd: { confirm: 'dual', secretArgs: ['old', 'new'] },
@@ -84,6 +95,7 @@ export const WRITE_POLICY: Readonly<Record<string, WritePolicy>> = {
   ip_nmask: { confirm: 'dual', affectsNetwork: true, snapshotRead: 'show_lan' },
   ip_route_add: { affectsNetwork: true, snapshotRead: 'ip_route_status' },
   ip_route_del: { affectsNetwork: true, snapshotRead: 'ip_route_status' },
+  ip_bgp: { secretArgs: ['key'] },
 
   // --- management ports / hardening ---
   mngt_sshport: { confirm: 'dual' },
@@ -93,7 +105,8 @@ export const WRITE_POLICY: Readonly<Record<string, WritePolicy>> = {
   mngt_bfp: { confirm: 'dual' },
 
   // --- linux app ---
-  linux_setlinuxip: { confirm: 'dual', affectsNetwork: true },
+  linux_setlinuxip: { confirm: 'dual', affectsNetwork: true, secretArgs: ['password'] },
+  sdk_linux_setlinuxip: { secretArgs: ['password'] },
 
   // --- ports / firewall ---
   port_speed: { affectsNetwork: true },
@@ -110,8 +123,15 @@ export const WRITE_POLICY: Readonly<Record<string, WritePolicy>> = {
   hsportal_setup: { secretArgs: ['appKey', 'appId'] },
   ldap_set: { secretArgs: ['value'] },
   tacacsplus_set: { secretArgs: ['secret'] },
+  ddns_set: { secretArgs: ['password'] },
+  ddns_set_update: { secretArgs: ['password'] },
+  mngt_certimport: { secretArgs: ['password'] },
+  radius_client_add: { secretArgs: ['secret'] },
+  service_login: { secretArgs: ['password'] },
+  sys_adminuser: { secretArgs: ['password'] },
   vpn_setup: { affectsNetwork: true, secretArgs: ['param'] },
   vpn_ovpn: { affectsNetwork: true, secretArgs: ['param'] },
+  vpn_wg_keyset: { confirm: 'dual', secretArgs: ['privateKey'] },
   vpn_dial_out: { affectsNetwork: true },
   qos_setup: { affectsNetwork: true },
   qos_class: { affectsNetwork: true },
@@ -122,6 +142,8 @@ export const WRITE_POLICY: Readonly<Record<string, WritePolicy>> = {
 
   // --- internet / HA / VRRP / bridge / vlan ---
   internet_set: { confirm: 'dual', affectsNetwork: true, secretArgs: ['password'] },
+  internet: { secretArgs: ['password'] },
+  ip6_internet: { secretArgs: ['password'] },
   ha_set: { confirm: 'dual', affectsNetwork: true },
   vrrp_enable: { confirm: 'dual', affectsNetwork: true },
   vrrp_set: { affectsNetwork: true },
@@ -140,6 +162,7 @@ export const WRITE_POLICY: Readonly<Record<string, WritePolicy>> = {
   user_account: { confirm: 'dual', secretArgs: ['param', 'userName'] },
   user_edit: { secretArgs: ['param'] },
   user_set: { secretArgs: ['param'] },
+  user: { secretArgs: ['param', 'userName'] },
   user_setdefault: { confirm: 'dual' },
 
   // --- misc network ---
@@ -148,18 +171,27 @@ export const WRITE_POLICY: Readonly<Record<string, WritePolicy>> = {
   portmaptime_flush: { affectsNetwork: true },
 };
 
-export function applyWritePolicy<T extends { id: string; kind: string }>(
+export function applyToolPolicy<T extends { id: string; kind: string }>(
   cmd: T,
 ): T & ResolvedToolPolicy {
   const kind = cmd.kind === 'write' ? 'write' : 'read';
-  const policy =
-    kind === 'write' ? (WRITE_POLICY[cmd.id] ?? EXTRA_WRITE_POLICY[cmd.id]) : undefined;
-  const confirm = resolveConfirmTier(kind, policy);
-  const { confirm: _c, ...rest } = policy ?? {};
+  const policy = kind === 'write' ? WRITE_POLICY[cmd.id] : undefined;
+  const readPolicy = kind === 'read' ? READ_POLICY[cmd.id] : undefined;
+  const sdk = 'sdk' in cmd && cmd.sdk && typeof cmd.sdk === 'object' ? cmd.sdk : undefined;
+  const manifestId = sdk && 'manifestId' in sdk && typeof sdk.manifestId === 'string'
+    ? sdk.manifestId
+    : undefined;
+  const sdkClassification = manifestId ? operationFor(manifestId)?.classification : undefined;
+  const confirm = resolveConfirmTier(kind, policy, sdkClassification);
+  const { confirm: _c, secretArgs: policySecretArgs, ...rest } = policy ?? {};
+  const currentSecretArgs =
+    'secretArgs' in cmd && Array.isArray(cmd.secretArgs) ? cmd.secretArgs : [];
+  const secretArgs = [...new Set([...currentSecretArgs, ...(policySecretArgs ?? [])])];
   return {
     ...cmd,
     ...rest,
+    ...(secretArgs.length > 0 ? { secretArgs } : {}),
+    ...(readPolicy?.sensitiveOutput ? { sensitiveOutput: true } : {}),
     confirm,
-    dangerous: confirm === 'dual',
   };
 }

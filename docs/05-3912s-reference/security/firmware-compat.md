@@ -49,6 +49,7 @@ Evidence is recorded in the repo's `recon-output/` (gitignored) and in
 
 - A firmware upgrade may change prompt, output format, or command syntax.
 - Re-run verification before trusting a mapping: `?`, `<family> ?`, `<cmd> ?`,
-  and the read-only E2E suite (`npm run e2e`).
+  and the local read-only E2E suite (`npm run e2e`). Full write coverage runs
+  only against the simulated DrayOS server in CI (`npm run e2e:testing`).
 - Update `docs/03-reference/commands.md` (regenerate from the registry) after
   any registry change.

@@ -102,8 +102,10 @@ export class SshClientTransport implements Transport {
     }
   }
 
-  async close(_reason: string): Promise<void> {
-    this.open = false;
+  async close(reason: string): Promise<void> {
+    // Only the MCP lifecycle closes this transport permanently. SDK command
+    // failures discard the SDK session, then the same transport can reconnect.
+    if (reason === 'mcp_disconnect') this.open = false;
     try {
       await this.ssh.disconnect();
     } catch {

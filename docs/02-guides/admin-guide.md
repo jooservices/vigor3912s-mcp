@@ -49,10 +49,14 @@ goes through the confirm gate; commands marked **dangerous** also need
 | --- | --- | --- |
 | Ping | `ip_ping` | `{ host }` (5 packets) |
 | Traceroute | `ip_tracert` | `{ host }` |
+
 | Sessions | `show_session` | — |
 | CPU / memory | `show_cpu` / `show_memory` | — |
 | NAT table | `show_nat` | — |
 | Port mapping | `show_portmap` | — |
+
+Traceroute reads and generated SDK ping/traceroute variants have a 60-second
+command timeout. Other read tools use 15 seconds by default.
 
 ## Management & security
 
@@ -90,6 +94,13 @@ fw 4.4.7_RC2):
 3. Sign with `node tools/approve.mjs <confirmation_id>` and re-call with
    `signature` (+ `acknowledge: true` when the tier is dual).
 4. Confirm with `internet_view` again.
+
+For previews containing `<redacted:FIELD>`, the approver CLI requests that
+field again with terminal input hidden, then checks the reconstructed command
+digest before signing. Pending confirmation files store only field names and
+redacted previews. Do not use blind payload signing for routine approvals;
+`--payload` works only with `--blind` and prints a warning because it bypasses
+command re-entry verification.
 
 Helpers (LAN only; never commit `.env`): `tools/e2e_wan7_ispname_*.mjs`.
 

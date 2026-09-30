@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { R, W } from '../builders.js';
+import { R, S, W } from '../builders.js';
 import type { FamilyDef } from '../types.js';
 import { ipv4, safeText } from '../../validators.js';
 
@@ -19,315 +19,447 @@ function req<T>(v: T | undefined | null, name: string): T {
 /**
  * SWM tools mirror SDK discriminated action unions (canonical UG forms).
  * `swm_tr069` has no SDK TypedOperation — kept as token args.
+ * `swm_show` / `swm_get` use the complete SDK argument shapes. Their former
+ * zero-argument forms were not valid documented commands.
  */
 export const swmFamily: FamilyDef = {
   family: 'swm',
   desc: 'Switch/AP management service.',
   commands: [
-    R('swm_show', 'swm', 'swm show', 'Switch management status'),
-    R('swm_get', 'swm', 'swm get', 'Switch management data'),
-    W('swm_enable', 'swm', () => 'swm enable', {}, 'Enable switch management'),
-    W('swm_disable', 'swm', () => 'swm disable', {}, 'Disable switch management'),
-    W(
-      'swm_post',
-      'swm',
-      (a) => `swm post ${String(a.mac)}`,
-      { mac: swmMac },
-      'Push config to switch by MAC (swm post <12-hex-mac>)',
-    ),
-    W(
+    S('swm_show', 'swm', 'cli.swm.show', 'Switch management status'),
+    S('swm_get', 'swm', 'cli.swm.get', 'Switch management data'),
+    // partial: cli.swm.enable.disable also covers the `disable` variant.
+    S('swm_enable', 'swm', 'cli.swm.enable.disable', 'Enable switch management', {
+        args: {},
+        toInput: () => ({ action: 'enable' }),
+        partial: true,
+      }),
+    // partial: cli.swm.enable.disable also covers the `enable` variant.
+    S('swm_disable', 'swm', 'cli.swm.enable.disable', 'Disable switch management', {
+        args: {},
+        toInput: () => ({ action: 'disable' }),
+        partial: true,
+      }),
+    S('swm_post', 'swm', 'cli.swm.post', 'Push config to switch by MAC (swm post <12-hex-mac>)', {
+      args: { mac: swmMac },
+      toInput: (a) => ({ mac: a.mac as string }),
+    }),
+    S(
       'swm_group',
       'swm',
-      (a) => {
-        switch (a.action) {
-          case 'setWithPassword':
-            return `swm group set ${req(a.idx as number | undefined, 'idx')} ${req(a.name as string | undefined, 'name')} 1 ${req(a.password as string | undefined, 'password')}`;
-          case 'setNoPassword':
-            return `swm group set ${req(a.idx as number | undefined, 'idx')} ${req(a.name as string | undefined, 'name')} 0`;
-          case 'show':
-            return 'swm group show';
-          case 'add':
-            return `swm group add ${req(a.idx as number | undefined, 'idx')} ${req(a.mac as string | undefined, 'mac')}`;
-          case 'delete':
-            return `swm group delete ${req(a.idx as number | undefined, 'idx')} ${req(a.mac as string | undefined, 'mac')}`;
-          default:
-            throw new Error('invalid swm_group action');
-        }
-      },
-      {
-        action: z.enum(['setWithPassword', 'setNoPassword', 'show', 'add', 'delete']),
-        idx: z.number().int().min(1).max(10).optional(),
-        name: swmToken.optional(),
-        password: swmToken.optional(),
-        mac: swmMac.optional(),
-      },
+      'cli.swm.group',
       'Switch group (SDK cli.swm.group)',
+      {
+        args: {
+          action: z.enum(['setWithPassword', 'setNoPassword', 'show', 'add', 'delete']),
+          idx: z.number().int().min(1).max(10).optional(),
+          name: swmToken.optional(),
+          password: swmToken.optional(),
+          mac: swmMac.optional(),
+        },
+        toInput: (a) => {
+          switch (a.action) {
+            case 'setWithPassword':
+              return {
+                action: 'setWithPassword',
+                idx: req(a.idx as number | undefined, 'idx'),
+                name: req(a.name as string | undefined, 'name'),
+                password: req(a.password as string | undefined, 'password'),
+              };
+            case 'setNoPassword':
+              return {
+                action: 'setNoPassword',
+                idx: req(a.idx as number | undefined, 'idx'),
+                name: req(a.name as string | undefined, 'name'),
+              };
+            case 'show':
+              return { action: 'show' };
+            case 'add':
+              return {
+                action: 'add',
+                idx: req(a.idx as number | undefined, 'idx'),
+                mac: req(a.mac as string | undefined, 'mac'),
+              };
+            case 'delete':
+              return {
+                action: 'delete',
+                idx: req(a.idx as number | undefined, 'idx'),
+                mac: req(a.mac as string | undefined, 'mac'),
+              };
+            default:
+              throw new Error('invalid swm_group action');
+          }
+        },
+      },
     ),
-    W(
+    S(
       'swm_profile',
       'swm',
-      (a) => {
-        switch (a.action) {
-          case 'add':
-            return `swm profile add ${req(a.mac as string | undefined, 'mac')}`;
-          case 'delete':
-            return `swm profile delete ${req(a.mac as string | undefined, 'mac')}`;
-          case 'show':
-            return 'swm profile show';
-          case 'enableAll':
-            return `swm profile enable_all ${req(a.mac as string | undefined, 'mac')}`;
-          case 'disableAll':
-            return `swm profile disable_all ${req(a.mac as string | undefined, 'mac')}`;
-          default:
-            throw new Error('invalid swm_profile action');
-        }
-      },
-      {
-        action: z.enum(['add', 'delete', 'show', 'enableAll', 'disableAll']),
-        mac: swmMac.optional(),
-      },
+      'cli.swm.profile',
       'Switch profile (SDK cli.swm.profile)',
+      {
+        args: {
+          action: z.enum(['add', 'delete', 'show', 'enableAll', 'disableAll']),
+          mac: swmMac.optional(),
+        },
+        toInput: (a) => {
+          switch (a.action) {
+            case 'add':
+              return { action: 'add', mac: req(a.mac as string | undefined, 'mac') };
+            case 'delete':
+              return { action: 'delete', mac: req(a.mac as string | undefined, 'mac') };
+            case 'show':
+              return { action: 'show' };
+            case 'enableAll':
+              return { action: 'enableAll', mac: req(a.mac as string | undefined, 'mac') };
+            case 'disableAll':
+              return { action: 'disableAll', mac: req(a.mac as string | undefined, 'mac') };
+            default:
+              throw new Error('invalid swm_profile action');
+          }
+        },
+      },
     ),
-    W(
+    S(
       'swm_detail',
       'swm',
-      (a) => {
-        switch (a.action) {
-          case 'comment':
-            return `swm detail comment ${req(a.mac as string | undefined, 'mac')} ${req(a.comment as string | undefined, 'comment')}`;
-          case 'name':
-            return `swm detail name ${req(a.mac as string | undefined, 'mac')} ${req(a.name as string | undefined, 'name')}`;
-          case 'passwd':
-            return `swm detail passwd ${req(a.mac as string | undefined, 'mac')} ${req(a.password as string | undefined, 'password')}`;
-          case 'config':
-            return `swm detail config ${req(a.mac as string | undefined, 'mac')} ${req(a.configIndex as number | undefined, 'configIndex')}`;
-          case 'show':
-            return 'swm detail show';
-          case 'portShow':
-            return `swm detail port show ${req(a.mac as string | undefined, 'mac')}`;
-          case 'port':
-            return `swm detail port ${req(a.mac as string | undefined, 'mac')} ${req(a.port as number | undefined, 'port')} ${req(a.flag as string | undefined, 'flag')} ${req(a.schedule1 as number | undefined, 'schedule1')} ${req(a.schedule2 as number | undefined, 'schedule2')} ${req(a.description as string | undefined, 'description')}`;
-          case 'rateToggle': {
-            const enabled = req(a.enabled as boolean | undefined, 'enabled');
-            return `swm detail rate ${req(a.mac as string | undefined, 'mac')} ${req(a.port as number | undefined, 'port')} ${req(a.direction as string | undefined, 'direction')} ${enabled ? 'e' : 'd'}`;
-          }
-          case 'rateLimit':
-            return `swm detail rate ${req(a.mac as string | undefined, 'mac')} ${req(a.port as number | undefined, 'port')} ${req(a.direction as string | undefined, 'direction')} ${req(a.limit as number | undefined, 'limit')}`;
-          default:
-            throw new Error('invalid swm_detail action');
-        }
-      },
-      {
-        action: z.enum([
-          'comment',
-          'name',
-          'passwd',
-          'config',
-          'show',
-          'portShow',
-          'port',
-          'rateToggle',
-          'rateLimit',
-        ]),
-        mac: swmMac.optional(),
-        comment: swmToken.optional(),
-        name: swmToken.optional(),
-        password: swmToken.optional(),
-        configIndex: z.number().int().min(0).optional(),
-        port: z.number().int().min(1).max(28).optional(),
-        flag: swmToken.optional(),
-        schedule1: z.number().int().min(0).optional(),
-        schedule2: z.number().int().min(0).optional(),
-        description: swmToken.optional(),
-        direction: z.enum(['i', 'e']).optional(),
-        enabled: z.boolean().optional(),
-        limit: z.number().int().positive().optional(),
-      },
+      'cli.swm.detail',
       'Switch detail (SDK cli.swm.detail)',
+      {
+        args: {
+          action: z.enum([
+            'comment',
+            'name',
+            'passwd',
+            'config',
+            'show',
+            'portShow',
+            'port',
+            'rateToggle',
+            'rateLimit',
+          ]),
+          mac: swmMac.optional(),
+          comment: swmToken.optional(),
+          name: swmToken.optional(),
+          password: swmToken.optional(),
+          configIndex: z.number().int().min(0).optional(),
+          port: z.number().int().min(1).max(28).optional(),
+          flag: swmToken.optional(),
+          schedule1: z.number().int().min(0).optional(),
+          schedule2: z.number().int().min(0).optional(),
+          description: swmToken.optional(),
+          direction: z.enum(['i', 'e']).optional(),
+          enabled: z.boolean().optional(),
+          limit: z.number().int().positive().optional(),
+        },
+        toInput: (a) => {
+          switch (a.action) {
+            case 'comment':
+              return {
+                action: 'comment',
+                mac: req(a.mac as string | undefined, 'mac'),
+                comment: req(a.comment as string | undefined, 'comment'),
+              };
+            case 'name':
+              return {
+                action: 'name',
+                mac: req(a.mac as string | undefined, 'mac'),
+                name: req(a.name as string | undefined, 'name'),
+              };
+            case 'passwd':
+              return {
+                action: 'passwd',
+                mac: req(a.mac as string | undefined, 'mac'),
+                password: req(a.password as string | undefined, 'password'),
+              };
+            case 'config':
+              return {
+                action: 'config',
+                mac: req(a.mac as string | undefined, 'mac'),
+                configIndex: req(a.configIndex as number | undefined, 'configIndex'),
+              };
+            case 'show':
+              return { action: 'show' };
+            case 'portShow':
+              return { action: 'portShow', mac: req(a.mac as string | undefined, 'mac') };
+            case 'port':
+              return {
+                action: 'port',
+                mac: req(a.mac as string | undefined, 'mac'),
+                port: req(a.port as number | undefined, 'port'),
+                flag: req(a.flag as string | undefined, 'flag'),
+                schedule1: req(a.schedule1 as number | undefined, 'schedule1'),
+                schedule2: req(a.schedule2 as number | undefined, 'schedule2'),
+                description: req(a.description as string | undefined, 'description'),
+              };
+            case 'rateToggle':
+              return {
+                action: 'rateToggle',
+                mac: req(a.mac as string | undefined, 'mac'),
+                port: req(a.port as number | undefined, 'port'),
+                direction: req(a.direction as 'i' | 'e' | undefined, 'direction'),
+                enabled: req(a.enabled as boolean | undefined, 'enabled'),
+              };
+            case 'rateLimit':
+              return {
+                action: 'rateLimit',
+                mac: req(a.mac as string | undefined, 'mac'),
+                port: req(a.port as number | undefined, 'port'),
+                direction: req(a.direction as 'i' | 'e' | undefined, 'direction'),
+                limit: req(a.limit as number | undefined, 'limit'),
+              };
+            default:
+              throw new Error('invalid swm_detail action');
+          }
+        },
+      },
     ),
-    W(
+    S(
       'swm_maintain',
       'swm',
-      (a) => {
-        switch (a.action) {
-          case 'reboot':
-            return `swm maintain reboot ${req(a.mac as string | undefined, 'mac')}`;
-          case 'reset':
-            return `swm maintain reset ${req(a.mac as string | undefined, 'mac')}`;
-          case 'show':
-            return 'swm maintain show';
-          default:
-            throw new Error('invalid swm_maintain action');
-        }
-      },
-      {
-        action: z.enum(['reboot', 'reset', 'show']),
-        mac: swmMac.optional(),
-      },
+      'cli.swm.maintain',
       'Switch maintain (SDK cli.swm.maintain)',
+      {
+        args: {
+          action: z.enum(['reboot', 'reset', 'show']),
+          mac: swmMac.optional(),
+        },
+        toInput: (a) => {
+          switch (a.action) {
+            case 'reboot':
+              return { action: 'reboot', mac: req(a.mac as string | undefined, 'mac') };
+            case 'reset':
+              return { action: 'reset', mac: req(a.mac as string | undefined, 'mac') };
+            case 'show':
+              return { action: 'show' };
+            default:
+              throw new Error('invalid swm_maintain action');
+          }
+        },
+      },
     ),
-    W(
+    S(
       'swm_search',
       'swm',
-      (a) => {
-        switch (a.action) {
-          case 'mac':
-            return `swm search mac ${req(a.mac as string | undefined, 'mac')}`;
-          case 'ip':
-            return `swm search ip ${req(a.ip as string | undefined, 'ip')}`;
-          case 'description':
-            return `swm search description ${req(a.query as string | undefined, 'query')}`;
-          default:
-            throw new Error('invalid swm_search action');
-        }
-      },
-      {
-        action: z.enum(['mac', 'ip', 'description']),
-        mac: swmMac.optional(),
-        ip: ipv4.optional(),
-        query: safeText().optional(),
-      },
+      'cli.swm.search',
       'Switch search (SDK cli.swm.search)',
+      {
+        args: {
+          action: z.enum(['mac', 'ip', 'description']),
+          mac: swmMac.optional(),
+          ip: ipv4.optional(),
+          query: safeText().optional(),
+        },
+        toInput: (a) => {
+          switch (a.action) {
+            case 'mac':
+              return { action: 'mac', mac: req(a.mac as string | undefined, 'mac') };
+            case 'ip':
+              return { action: 'ip', ip: req(a.ip as string | undefined, 'ip') };
+            case 'description':
+              return { action: 'description', query: req(a.query as string | undefined, 'query') };
+            default:
+              throw new Error('invalid swm_search action');
+          }
+        },
+      },
     ),
-    W(
+    S(
       'swm_db',
       'swm',
-      (a) => {
-        switch (a.action) {
-          case 'ctlToggle':
-            return `swm db ctl ${req(a.enabled as boolean | undefined, 'enabled') ? 'en' : 'dis'}`;
-          case 'ctlShow':
-            return 'swm db ctl show';
-          case 'alertNotify':
-            return `swm db alert notify ${req(a.mode as string | undefined, 'mode')}`;
-          case 'alertAction':
-            return `swm db alert action ${req(a.mode as string | undefined, 'mode')}`;
-          case 'alertSms':
-            return `swm db alert sms ${req(a.idx as number | undefined, 'idx')}`;
-          case 'alertMail':
-            return `swm db alert mail ${req(a.idx as number | undefined, 'idx')}`;
-          default:
-            throw new Error('invalid swm_db action');
-        }
-      },
-      {
-        action: z.enum([
-          'ctlToggle',
-          'ctlShow',
-          'alertNotify',
-          'alertAction',
-          'alertSms',
-          'alertMail',
-        ]),
-        enabled: z.boolean().optional(),
-        mode: z.enum(['N', 'S', 'B']).optional(),
-        idx: z.number().int().positive().optional(),
-      },
+      'cli.swm.db',
       'Switch DB (SDK cli.swm.db)',
+      {
+        args: {
+          action: z.enum([
+            'ctlToggle',
+            'ctlShow',
+            'alertNotify',
+            'alertAction',
+            'alertSms',
+            'alertMail',
+          ]),
+          enabled: z.boolean().optional(),
+          mode: z.enum(['N', 'S', 'B']).optional(),
+          idx: z.number().int().positive().optional(),
+        },
+        toInput: (a) => {
+          switch (a.action) {
+            case 'ctlToggle':
+              return { action: 'ctlToggle', enabled: req(a.enabled as boolean | undefined, 'enabled') };
+            case 'ctlShow':
+              return { action: 'ctlShow' };
+            case 'alertNotify':
+              return { action: 'alertNotify', mode: req(a.mode as 'N' | 'S' | undefined, 'mode') };
+            case 'alertAction':
+              return { action: 'alertAction', mode: req(a.mode as 'S' | 'B' | undefined, 'mode') };
+            case 'alertSms':
+              return { action: 'alertSms', idx: req(a.idx as number | undefined, 'idx') };
+            case 'alertMail':
+              return { action: 'alertMail', idx: req(a.idx as number | undefined, 'idx') };
+            default:
+              throw new Error('invalid swm_db action');
+          }
+        },
+      },
     ),
-    W(
+    S(
       'swm_alert',
       'swm',
-      (a) => {
-        switch (a.action) {
-          case 'toggle':
-            return `swm alert ${req(a.enabled as boolean | undefined, 'enabled') ? 'enable' : 'disable'}`;
-          case 'show':
-            return 'swm alert show';
-          case 'actionToggle':
-            return `swm alert ${req(a.enabled as boolean | undefined, 'enabled') ? 'en' : 'dis'} ${req(a.idx as number | undefined, 'idx')}`;
-          case 'setLog':
-            return `swm alert set ${req(a.idx as number | undefined, 'idx')} log ${req(a.enabled as boolean | undefined, 'enabled') ? 'e' : 'd'}`;
-          case 'setName':
-            return `swm alert set ${req(a.idx as number | undefined, 'idx')} name ${req(a.name as string | undefined, 'name')}`;
-          case 'setColor':
-            return `swm alert set ${req(a.idx as number | undefined, 'idx')} color ${req(a.color as string | undefined, 'color')}`;
-          case 'setNotif':
-            return `swm alert set ${req(a.idx as number | undefined, 'idx')} notif ${req(a.enabled as boolean | undefined, 'enabled') ? 'e' : 'd'}`;
-          case 'setObject':
-            return `swm alert set ${req(a.idx as number | undefined, 'idx')} obj ${req(a.objectIndex as number | undefined, 'objectIndex')} ${req(a.objectValue as number | undefined, 'objectValue')}`;
-          case 'display':
-            return 'swm alert display';
-          default:
-            throw new Error('invalid swm_alert action');
-        }
-      },
-      {
-        action: z.enum([
-          'toggle',
-          'show',
-          'actionToggle',
-          'setLog',
-          'setName',
-          'setColor',
-          'setNotif',
-          'setObject',
-          'display',
-        ]),
-        enabled: z.boolean().optional(),
-        idx: z.number().int().min(1).max(8).optional(),
-        name: swmToken.optional(),
-        color: z.enum(['O', 'R', 'N']).optional(),
-        objectIndex: z.number().int().min(1).max(4).optional(),
-        objectValue: z.number().int().min(1).max(10).optional(),
-      },
+      'cli.swm.alert',
       'Switch alert (SDK cli.swm.alert canonical forms)',
+      {
+        args: {
+          action: z.enum([
+            'toggle',
+            'show',
+            'actionToggle',
+            'setLog',
+            'setName',
+            'setColor',
+            'setNotif',
+            'setObject',
+            'display',
+          ]),
+          enabled: z.boolean().optional(),
+          idx: z.number().int().min(1).max(8).optional(),
+          name: swmToken.optional(),
+          color: z.enum(['O', 'R', 'N']).optional(),
+          objectIndex: z.number().int().min(1).max(4).optional(),
+          objectValue: z.number().int().min(1).max(10).optional(),
+        },
+        toInput: (a) => {
+          switch (a.action) {
+            case 'toggle':
+              return { action: 'toggle', enabled: req(a.enabled as boolean | undefined, 'enabled') };
+            case 'show':
+              return { action: 'show' };
+            case 'actionToggle':
+              return {
+                action: 'actionToggle',
+                idx: req(a.idx as number | undefined, 'idx'),
+                enabled: req(a.enabled as boolean | undefined, 'enabled'),
+              };
+            case 'setLog':
+              return {
+                action: 'setLog',
+                idx: req(a.idx as number | undefined, 'idx'),
+                enabled: req(a.enabled as boolean | undefined, 'enabled'),
+              };
+            case 'setName':
+              return {
+                action: 'setName',
+                idx: req(a.idx as number | undefined, 'idx'),
+                name: req(a.name as string | undefined, 'name'),
+              };
+            case 'setColor':
+              return {
+                action: 'setColor',
+                idx: req(a.idx as number | undefined, 'idx'),
+                color: req(a.color as 'O' | 'R' | 'N' | undefined, 'color'),
+              };
+            case 'setNotif':
+              return {
+                action: 'setNotif',
+                idx: req(a.idx as number | undefined, 'idx'),
+                enabled: req(a.enabled as boolean | undefined, 'enabled'),
+              };
+            case 'setObject':
+              return {
+                action: 'setObject',
+                idx: req(a.idx as number | undefined, 'idx'),
+                objectIndex: req(a.objectIndex as number | undefined, 'objectIndex'),
+                objectValue: req(a.objectValue as number | undefined, 'objectValue'),
+              };
+            case 'display':
+              return { action: 'display' };
+            default:
+              throw new Error('invalid swm_alert action');
+          }
+        },
+      },
     ),
-    W(
+    S(
       'swm_log',
       'swm',
-      (a) => {
-        switch (a.action) {
-          case 'showFilter':
-            return 'swm log show filter';
-          case 'showDay':
-            return 'swm log show day';
-          case 'showWeek':
-            return 'swm log show week';
-          case 'setLevel':
-            return `swm log set level ${req(a.idx as number | undefined, 'idx')} ${req(a.enabled as boolean | undefined, 'enabled') ? 'on' : 'off'}`;
-          case 'setType':
-            return `swm log set type ${req(a.idx as number | undefined, 'idx')} ${req(a.enabled as boolean | undefined, 'enabled') ? 'on' : 'off'}`;
-          case 'setSwitch':
-            return `swm log set switch ${req(a.mac as string | undefined, 'mac')} ${req(a.enabled as boolean | undefined, 'enabled') ? 'on' : 'off'}`;
-          default:
-            throw new Error('invalid swm_log action');
-        }
-      },
-      {
-        action: z.enum(['showFilter', 'showDay', 'showWeek', 'setLevel', 'setType', 'setSwitch']),
-        idx: z.number().int().min(1).max(8).optional(),
-        enabled: z.boolean().optional(),
-        mac: swmMac.optional(),
-      },
+      'cli.swm.log',
       'Switch log (SDK cli.swm.log)',
+      {
+        args: {
+          action: z.enum(['showFilter', 'showDay', 'showWeek', 'setLevel', 'setType', 'setSwitch']),
+          idx: z.number().int().min(1).max(8).optional(),
+          enabled: z.boolean().optional(),
+          mac: swmMac.optional(),
+        },
+        toInput: (a) => {
+          switch (a.action) {
+            case 'showFilter':
+              return { action: 'showFilter' };
+            case 'showDay':
+              return { action: 'showDay' };
+            case 'showWeek':
+              return { action: 'showWeek' };
+            case 'setLevel':
+              return {
+                action: 'setLevel',
+                idx: req(a.idx as number | undefined, 'idx'),
+                enabled: req(a.enabled as boolean | undefined, 'enabled'),
+              };
+            case 'setType':
+              return {
+                action: 'setType',
+                idx: req(a.idx as number | undefined, 'idx'),
+                enabled: req(a.enabled as boolean | undefined, 'enabled'),
+              };
+            case 'setSwitch':
+              return {
+                action: 'setSwitch',
+                mac: req(a.mac as string | undefined, 'mac'),
+                enabled: req(a.enabled as boolean | undefined, 'enabled'),
+              };
+            default:
+              throw new Error('invalid swm_log action');
+          }
+        },
+      },
     ),
-    W(
+    S(
       'swm_snmp',
       'swm',
-      (a) => {
-        switch (a.action) {
-          case 'sys':
-            return `swm snmp sys ${req(a.mac as string | undefined, 'mac')}`;
-          case 'iftbl':
-            return `swm snmp iftbl ${req(a.mac as string | undefined, 'mac')} ${req(a.portNum as number | undefined, 'portNum')}`;
-          case 'poe':
-            return `swm snmp poe ${req(a.mac as string | undefined, 'mac')}`;
-          case 'trpcomShow':
-            return `swm snmp trpcom show ${req(a.mac as string | undefined, 'mac')}`;
-          case 'trpcomSet':
-            return `swm snmp trpcom set ${req(a.mac as string | undefined, 'mac')} ${req(a.name as string | undefined, 'name')}`;
-          default:
-            throw new Error('invalid swm_snmp action');
-        }
-      },
-      {
-        action: z.enum(['sys', 'iftbl', 'poe', 'trpcomShow', 'trpcomSet']),
-        mac: swmMac.optional(),
-        portNum: z.number().int().min(1).max(28).optional(),
-        name: swmToken.optional(),
-      },
+      'cli.swm.snmp',
       'Switch SNMP (SDK cli.swm.snmp)',
+      {
+        args: {
+          action: z.enum(['sys', 'iftbl', 'poe', 'trpcomShow', 'trpcomSet']),
+          mac: swmMac.optional(),
+          portNum: z.number().int().min(1).max(28).optional(),
+          name: swmToken.optional(),
+        },
+        toInput: (a) => {
+          switch (a.action) {
+            case 'sys':
+              return { action: 'sys', mac: req(a.mac as string | undefined, 'mac') };
+            case 'iftbl':
+              return {
+                action: 'iftbl',
+                mac: req(a.mac as string | undefined, 'mac'),
+                portNum: req(a.portNum as number | undefined, 'portNum'),
+              };
+            case 'poe':
+              return { action: 'poe', mac: req(a.mac as string | undefined, 'mac') };
+            case 'trpcomShow':
+              return { action: 'trpcomShow', mac: req(a.mac as string | undefined, 'mac') };
+            case 'trpcomSet':
+              return {
+                action: 'trpcomSet',
+                mac: req(a.mac as string | undefined, 'mac'),
+                name: req(a.name as string | undefined, 'name'),
+              };
+            default:
+              throw new Error('invalid swm_snmp action');
+          }
+        },
+      },
     ),
     W(
       'swm_tr069',

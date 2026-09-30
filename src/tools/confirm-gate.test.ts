@@ -5,7 +5,7 @@ import {
   signApproval,
 } from './approve-crypto.js';
 import { ConfirmError, ConfirmGate } from './confirm-gate.js';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -81,14 +81,17 @@ describe('ConfirmGate (signed approval)', () => {
     const file = path.join(dir, 'pending-confirms.json');
     try {
       const gate = new ConfirmGate(60_000, 100, file, pub);
-      gate.create('sys_passwd', 'sys passwd secret oldnew', 'sys passwd *** ***');
+      gate.create('sys_passwd', 'sys passwd secret oldnew', 'sys passwd <redacted:old> <redacted:new>', ['old', 'new']);
       const raw = readFileSync(file, 'utf8');
       expect(raw).not.toContain('secret');
-      expect(raw).toContain('sys passwd *** ***');
+      expect(raw).toContain('sys passwd <redacted:old> <redacted:new>');
+      expect(raw).toContain('"redactedFields": [\n      "old",\n      "new"\n    ]');
       expect(statSync(file).mode & 0o777).toBe(0o600);
+      expect(readdirSync(dir).filter((name) => name.endsWith('.tmp'))).toEqual([]);
       const loaded = ConfirmGate.loadPending(file);
       expect(loaded).toHaveLength(1);
-      expect(loaded[0]?.commandPreview).toBe('sys passwd *** ***');
+      expect(loaded[0]?.commandPreview).toBe('sys passwd <redacted:old> <redacted:new>');
+      expect(loaded[0]?.redactedFields).toEqual(['old', 'new']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -117,6 +120,20 @@ describe('ConfirmGate (signed approval)', () => {
       expect(ConfirmGate.loadPending(file)).toEqual([]);
       writeFileSync(file, '{"no":"array"}');
       expect(ConfirmGate.loadPending(file)).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('loads pending intents created before redactedFields existed', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'vigor-pending-legacy-'));
+    const file = path.join(dir, 'pending.json');
+    try {
+      writeFileSync(file, JSON.stringify([{
+        confirmationId: 'old', toolId: 'sys_commit', commandDigest: 'digest', commandPreview: 'sys commit',
+        nonce: 'nonce', createdAt: 1, expiresAt: 2,
+      }]));
+      expect(ConfirmGate.loadPending(file)[0]?.redactedFields).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
