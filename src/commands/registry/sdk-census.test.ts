@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { inputSchemaFor } from '@jooservices/vigor3912s-sdk/schemas';
-import { allOperations } from '../../sdk/operation-index.js';
+import { allOperations, operationFor } from '../../sdk/operation-index.js';
+import { resolveSdkInput } from '../sdk-invoke.js';
 import { jsonSchemaToZod } from '../../sdk/schema-to-zod.js';
 import { allCommands } from './index.js';
-import { RAW_EXECUTE_ALLOWLIST, SDK_TOOL_EXCLUSIONS } from './sdk-fixtures.js';
+import { RAW_EXECUTE_ALLOWLIST, SDK_RENDER_FIXTURES, SDK_TOOL_EXCLUSIONS } from './sdk-fixtures.js';
 
 describe('SDK census gates', () => {
   it('covers every implemented SDK operation with a tool (or a reviewed exclusion)', () => {
@@ -53,6 +54,19 @@ describe('SDK census gates', () => {
     for (const cmd of applied) {
       if (!cmd.sdk || !destructive.has(cmd.sdk.manifestId)) continue;
       expect(cmd.confirm, `${cmd.id} -> ${cmd.sdk.manifestId}`).toBe('dual');
+    }
+  });
+
+  it('renders fixture inputs exactly as the validated SDK operation frames', () => {
+    const commands = allCommands();
+    for (const [manifestId, args] of Object.entries(SDK_RENDER_FIXTURES)) {
+      const cmd = commands.find((tool) => tool.sdk?.manifestId === manifestId);
+      const op = operationFor(manifestId);
+      expect(cmd, `no tool for ${manifestId}`).toBeDefined();
+      expect(op, `no SDK operation for ${manifestId}`).toBeDefined();
+      const input = resolveSdkInput(cmd!.sdk!, args);
+      const frames = op!.buildFrames(input).map((frame) => frame.command).join('\n');
+      expect(cmd!.render(args), manifestId).toBe(frames);
     }
   });
 
