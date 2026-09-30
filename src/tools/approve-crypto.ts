@@ -38,6 +38,18 @@ function parsePublicKey(pemOrB64: string): KeyObject {
   return createPublicKey({ key: Buffer.from(trimmed, 'base64'), format: 'der', type: 'spki' });
 }
 
+export function parseApprovePublicKey(pemOrB64: string): KeyObject {
+  try {
+    const key = parsePublicKey(pemOrB64);
+    if (key.asymmetricKeyType !== 'ed25519') throw new Error('unexpected key type');
+    return key;
+  } catch {
+    throw new Error(
+      'VIGOR_APPROVE_PUBKEY must be an Ed25519 public key (SPKI PEM or base64 DER)',
+    );
+  }
+}
+
 function parsePrivateKey(pem: string): KeyObject {
   return createPrivateKey(pem.trim());
 }
@@ -60,7 +72,7 @@ export function signApproval(
 }
 
 export function verifyApprovalSignature(
-  publicKeyPemOrB64: string,
+  publicKeyPemOrB64: string | KeyObject,
   signatureB64: string,
   confirmationId: string,
   nonce: string,
@@ -71,7 +83,12 @@ export function verifyApprovalSignature(
     const payload = buildSignPayload(confirmationId, nonce, commandDigest, expiresAt);
     const signature = Buffer.from(signatureB64, 'base64');
     if (signature.length === 0) return false;
-    return verify(null, payload, parsePublicKey(publicKeyPemOrB64), signature);
+    const publicKey =
+      typeof publicKeyPemOrB64 === 'string'
+        ? parseApprovePublicKey(publicKeyPemOrB64)
+        : publicKeyPemOrB64;
+    if (publicKey.asymmetricKeyType !== 'ed25519') return false;
+    return verify(null, payload, publicKey, signature);
   } catch {
     return false;
   }

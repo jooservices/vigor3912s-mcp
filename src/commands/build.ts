@@ -14,18 +14,20 @@ function text(content: unknown): string {
   return JSON.stringify(content, null, 2);
 }
 
+export type ExposedTools = { mode: 'all' } | { mode: 'list'; ids: string[] };
+
 export interface RegisterOptions {
   gate: ConfirmGate;
   store: LogStore;
   readOnly?: boolean;
   autoCommit?: boolean;
-  exposeTools?: string[];
+  exposeTools?: ExposedTools;
   disabledTools?: string[];
   toolOutputLimit?: number;
 }
 
 function isToolEnabled(cmd: CommandDef, opts: RegisterOptions): boolean {
-  if (opts.exposeTools && opts.exposeTools.length > 0 && !opts.exposeTools.includes(cmd.id)) {
+  if (opts.exposeTools?.mode === 'list' && !opts.exposeTools.ids.includes(cmd.id)) {
     return false;
   }
   if (opts.disabledTools && opts.disabledTools.includes(cmd.id)) return false;
@@ -45,7 +47,7 @@ export function registerRead(
     const started = Date.now();
     try {
       command = cmd.render(args);
-      const timeoutMs = cmd.id === 'ip_tracert' ? 60000 : 15000;
+      const timeoutMs = cmd.timeoutMs ?? 15000;
       const runOptions = { timeoutMs, ...(extra.signal ? { signal: extra.signal } : {}) };
       const raw = cmd.sdk
         ? await client.runOperation(cmd.sdk.manifestId, resolveSdkInput(cmd.sdk, args), runOptions)
@@ -115,13 +117,16 @@ function registerWrite(
   });
 }
 
-export function registerAllTools(server: McpServer, client: VigorClient, opts: RegisterOptions): void {
+export function registerAllTools(server: McpServer, client: VigorClient, opts: RegisterOptions): number {
   const { gate, store } = opts;
   const outputLimit = opts.toolOutputLimit ?? 16000;
   const autoCommit = opts.autoCommit ?? true;
+  let count = 0;
   for (const cmd of allCommands()) {
     if (!isToolEnabled(cmd, opts)) continue;
     if (cmd.kind === 'read') registerRead(server, client, store, cmd, outputLimit);
     else registerWrite(server, client, gate, store, cmd, autoCommit);
+    count += 1;
   }
+  return count;
 }

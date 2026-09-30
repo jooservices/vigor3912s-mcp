@@ -78,6 +78,19 @@ describe('LogStore', () => {
     }).not.toThrow();
   });
 
+  it('keeps insert methods as no-ops after close', () => {
+    const store = new LogStore(':memory:');
+    store.close();
+    expect(store.logRequest({
+      ts: new Date().toISOString(), toolId: 'x', kind: 'read', command: 'x', argsJson: '{}',
+      outcome: 'ok', durationMs: 1,
+    })).toBeNull();
+    expect(() => store.logWriteAudit({
+      requestId: null, ts: new Date().toISOString(), toolId: 'x', command: 'x',
+      status: 'preview', success: null,
+    })).not.toThrow();
+  });
+
   it('rejects non-SELECT or multi-statement query SQL', () => {
     const store = new LogStore(':memory:');
     expect(() => store.query('DELETE FROM requests')).toThrow(/SELECT/);

@@ -64,7 +64,9 @@ export function buildSdkGeneratedFamily(curated: readonly FamilyDef[]): FamilyDe
     usedIds.add(id);
 
     const desc = `SDK ${op.manifestId} (${op.classification})`;
-    const cmd = S(id, 'sdk_generated', op.manifestId, desc);
+    const timeoutMs =
+      op.manifestId.endsWith('.tracert') || op.manifestId.endsWith('.ping') ? 60000 : undefined;
+    const cmd = S(id, 'sdk_generated', op.manifestId, desc, timeoutMs ? { timeoutMs } : {});
     commands.push(cmd);
   }
 

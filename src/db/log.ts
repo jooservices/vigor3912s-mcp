@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
+import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 
 export type RequestOutcome = 'ok' | 'error' | 'needs_confirmation' | 'denied';
 export type WriteStatus =
@@ -115,6 +115,8 @@ function isoNow(): string {
  */
 export class LogStore {
   private db: DatabaseSync | null = null;
+  #insertRequest: StatementSync | null = null;
+  #insertAudit: StatementSync | null = null;
 
   constructor(file: string) {
     try {
@@ -139,6 +141,14 @@ export class LogStore {
       } catch {
         /* ignore */
       }
+      this.#insertRequest = this.db.prepare(
+        `INSERT INTO requests (ts, tool_id, kind, command, args_json, outcome, error_code, error_msg, duration_ms, output, requested_at, responded_at, send_at, recv_at, connect_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      this.#insertAudit = this.db.prepare(
+        `INSERT INTO write_audit (request_id, ts, tool_id, command, status, success, before_snapshot, after_snapshot, error_code, error_msg, commit_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
     } catch (err) {
       this.db = null;
       process.stderr.write(
@@ -150,28 +160,24 @@ export class LogStore {
   logRequest(entry: LogEntry): number | null {
     if (!this.db) return null;
     try {
-      const result = this.db
-        .prepare(
-          `INSERT INTO requests (ts, tool_id, kind, command, args_json, outcome, error_code, error_msg, duration_ms, output, requested_at, responded_at, send_at, recv_at, connect_ms)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          entry.ts,
-          entry.toolId,
-          entry.kind,
-          entry.command,
-          entry.argsJson,
-          entry.outcome,
-          entry.errorCode ?? null,
-          entry.errorMsg ?? null,
-          entry.durationMs,
-          entry.output ? truncate(entry.output) : null,
-          entry.requestedAt ?? null,
-          entry.respondedAt ?? null,
-          entry.sendAt ?? null,
-          entry.recvAt ?? null,
-          entry.connectMs ?? null,
-        );
+      const result = this.#insertRequest?.run(
+        entry.ts,
+        entry.toolId,
+        entry.kind,
+        entry.command,
+        entry.argsJson,
+        entry.outcome,
+        entry.errorCode ?? null,
+        entry.errorMsg ?? null,
+        entry.durationMs,
+        entry.output ? truncate(entry.output) : null,
+        entry.requestedAt ?? null,
+        entry.respondedAt ?? null,
+        entry.sendAt ?? null,
+        entry.recvAt ?? null,
+        entry.connectMs ?? null,
+      );
+      if (!result) return null;
       return Number(result.lastInsertRowid);
     } catch {
       /* best-effort */
@@ -182,24 +188,19 @@ export class LogStore {
   logWriteAudit(entry: WriteAuditEntry): void {
     if (!this.db) return;
     try {
-      this.db
-        .prepare(
-          `INSERT INTO write_audit (request_id, ts, tool_id, command, status, success, before_snapshot, after_snapshot, error_code, error_msg, commit_status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          entry.requestId,
-          entry.ts,
-          entry.toolId,
-          entry.command,
-          entry.status,
-          entry.success === null ? null : entry.success ? 1 : 0,
-          entry.beforeSnapshot ? truncate(entry.beforeSnapshot) : null,
-          entry.afterSnapshot ? truncate(entry.afterSnapshot) : null,
-          entry.errorCode ?? null,
-          entry.errorMsg ?? null,
-          entry.commitStatus ?? null,
-        );
+      this.#insertAudit?.run(
+        entry.requestId,
+        entry.ts,
+        entry.toolId,
+        entry.command,
+        entry.status,
+        entry.success === null ? null : entry.success ? 1 : 0,
+        entry.beforeSnapshot ? truncate(entry.beforeSnapshot) : null,
+        entry.afterSnapshot ? truncate(entry.afterSnapshot) : null,
+        entry.errorCode ?? null,
+        entry.errorMsg ?? null,
+        entry.commitStatus ?? null,
+      );
     } catch {
       /* best-effort */
     }
@@ -239,5 +240,7 @@ export class LogStore {
       /* ignore */
     }
     this.db = null;
+    this.#insertRequest = null;
+    this.#insertAudit = null;
   }
 }

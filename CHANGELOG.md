@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- Tool exposure now defaults to the 220 read tools. Add `EXPOSE_TOOLS=all` to
+  `.env` to preserve the previous full-tool exposure.
+
 ### Added
 
 - **Typed invoke everywhere, schema-driven**: `jsonSchemaToZod` now converts
@@ -36,6 +41,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Coverage now includes registry builders, registry resolution, SDK-generated
+  tools and MCP registration while excluding only static family catalogs,
+  entry-point wiring and test doubles.
+- Registry command arrays and ID lookups are now cached; SQLite insert
+  statements are prepared once per log store, and the approval key is parsed
+  once at configuration load.
+- Read command timeouts now come from registry metadata. Traceroute tools and
+  generated SDK ping/traceroute tools use 60 seconds; other reads use 15.
+- Relative database, pending-confirmation and `.env` paths now resolve from the
+  package root; `VIGOR_PENDING_FILE` configures both the server and signer CLI,
+  while `VIGOR_LOG_DB=:memory:` disables pending-file persistence.
 - Tool surface: **666 tools / 43 families** (220 read + 446 write), with all
   640 local SDK operations reachable, 663 SDK-backed tools, and three reviewed
   OD-1 raw compatibility tools. The count reflects the local, unreleased SDK
@@ -48,6 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Invalid or non-Ed25519 approval public keys now fail during configuration
+  loading with a clear error; the SSH transport regression covers invalid host
+  fingerprints when the transport is created.
 - Typed write execution rejects read-classified operations, keeps single-use
   authorization, and redacts credentials from generated SDK-tool previews and
   audit logs.

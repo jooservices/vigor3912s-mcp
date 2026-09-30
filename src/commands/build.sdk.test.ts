@@ -24,7 +24,7 @@ function cfg(overrides: Record<string, unknown> = {}) {
     readOnly: false,
     autoCommit: false,
     approvePublicKey,
-    exposeTools: [],
+    exposeTools: { mode: 'all' },
     disabledTools: [],
     toolOutputLimit: 16000,
     sshInsecureSkipHostVerify: true,
@@ -143,14 +143,14 @@ describe('SDK-backed tool wiring (T2a infrastructure)', () => {
       arguments: { account: 'test-account', password },
     });
     const body = JSON.parse(textOf(preview));
-    expect(body.preview).toContain('***');
+    expect(body.preview).toContain('<redacted:password>');
     expect(body.preview).not.toContain(password);
     expect(body.message).not.toContain(password);
 
     const request = store.query<Array<{ command: string; args_json: string }>>(
       'SELECT command, args_json FROM requests ORDER BY id LIMIT 1',
     )[0];
-    expect(request?.command).toContain('***');
+    expect(request?.command).toContain('<redacted:password>');
     expect(request?.args_json).toContain('***');
     expect(request?.command).not.toContain(password);
     expect(request?.args_json).not.toContain(password);

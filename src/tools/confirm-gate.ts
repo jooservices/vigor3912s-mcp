@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
+import type { KeyObject } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { digestCommand, verifyApprovalSignature } from './approve-crypto.js';
+import { digestCommand, parseApprovePublicKey, verifyApprovalSignature } from './approve-crypto.js';
 
 export type ConfirmErrorCode =
   | 'invalid_token'
@@ -65,14 +66,19 @@ export class ConfirmGate {
   /** Consumed confirmation ids kept until expiry for replay detection. */
   private used = new Map<string, number>();
   private chain: Promise<unknown> = Promise.resolve();
+  private readonly approvePublicKey?: KeyObject;
 
   constructor(
     ttlMs = 60000,
     private readonly maxPending = 100,
     private readonly pendingFile?: string,
-    private readonly approvePublicKey?: string,
+    approvePublicKey?: string | KeyObject,
   ) {
     this.ttlMsValue = ttlMs;
+    this.approvePublicKey =
+      typeof approvePublicKey === 'string'
+        ? parseApprovePublicKey(approvePublicKey)
+        : approvePublicKey;
   }
 
   get ttlMs(): number {

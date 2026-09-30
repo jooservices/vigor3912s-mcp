@@ -59,9 +59,10 @@ cannot complete a write without a human-produced signature.
 
 The AI surface is controlled by **`EXPOSE_TOOLS`**:
 
+- Unset or empty → only read tools are registered (220 tools; safe default).
 - `EXPOSE_TOOLS=readonly` → only read tools are registered (recommended for a
   local deployment against the real router).
-- `EXPOSE_TOOLS=all` (or unset) → all tools are registered.
+- `EXPOSE_TOOLS=all` → all 666 tools, including writes, are registered.
 - A comma-separated list → only those tool ids.
 
 `npm run e2e` uses the local/real-router readonly mode. CI's
@@ -70,6 +71,9 @@ including confirmed writes; it never connects to a real router.
 
 `VIGOR_READ_ONLY=true` additionally refuses any write at the driver, even if a
 write tool is exposed.
+
+Upgrading from 1.x? Add `EXPOSE_TOOLS=all` to `.env` to retain the previous
+default exposure of write tools.
 
 ## Limitations
 

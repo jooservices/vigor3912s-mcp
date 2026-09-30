@@ -15,17 +15,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { Writable } from 'node:stream';
-import { fileURLToPath } from 'node:url';
 import { signApproval } from '../dist/tools/approve-crypto.js';
 import { ConfirmGate } from '../dist/tools/confirm-gate.js';
 import { verifyReentry } from '../dist/tools/redaction.js';
+import { resolveDataPath } from '../dist/paths.js';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const cwd = path.resolve(here, '..');
-const PENDING_FILE =
-  process.env.VIGOR_PENDING_FILE ?? path.join(cwd, 'data', 'pending-confirms.json');
-const KEY_FILE =
-  process.env.VIGOR_APPROVE_PRIVKEY_FILE ?? path.join(cwd, 'data', 'keys', 'approve-private.pem');
+const logDb = resolveDataPath(process.env.VIGOR_LOG_DB ?? 'data/vigor3912s.db');
+const pendingDefault = path.join(path.dirname(logDb), 'pending-confirms.json');
+const PENDING_FILE = resolveDataPath(process.env.VIGOR_PENDING_FILE ?? pendingDefault);
+const KEY_FILE = resolveDataPath(
+  process.env.VIGOR_APPROVE_PRIVKEY_FILE ?? 'data/keys/approve-private.pem',
+);
 
 function loadPrivateKey() {
   if (!fs.existsSync(KEY_FILE)) {

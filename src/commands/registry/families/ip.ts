@@ -25,6 +25,7 @@ export const ipFamily: FamilyDef = {
           args: { host: ipv4 },
           toInput: (a) => ({ targetIp: a.host as string }),
           partial: true,
+          timeoutMs: 60000,
         }),
       S('ip_session', 'ip', 'cli.ip.session', 'IP session table'),
       S('ip_dnsforward', 'ip', 'cli.ip.dnsforward', 'DNS forward table'),

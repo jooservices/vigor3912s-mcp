@@ -21,6 +21,7 @@ export const ip6Family: FamilyDef = {
           args: { host: ipv6 },
           toInput: (a) => ({ target: a.host as string }),
           partial: true,
+          timeoutMs: 60000,
         }),
       // The old token passthrough could emit undocumented forms. Expose the
       // SDK discriminated union so the operation validates every sub-form.

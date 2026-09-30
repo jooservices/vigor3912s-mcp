@@ -29,9 +29,12 @@ SDK-backed and three reviewed OD-1 compatibility tools remain raw. The SDK
 schema/operation branch is not released yet; CI must clone a remote SDK ref
 that contains `./schemas` before this integration is merge-ready.
 
-Local deployments should expose only read tools by default
-(`EXPOSE_TOOLS=readonly`). Write tools are exercised in CI against a simulated
-DrayOS server (`npm run e2e:testing`, `EXPOSE_TOOLS=all`).
+Local deployments expose only read tools by default (220 tools). Set
+`EXPOSE_TOOLS=all` explicitly to expose the full 666-tool catalog. Write tools
+are exercised in CI against a simulated DrayOS server (`npm run e2e:testing`).
+
+**Upgrade from 1.x:** the default exposure changes to read-only. Add
+`EXPOSE_TOOLS=all` to `.env` to keep exposing write tools.
 
 ## Documentation
 
@@ -141,8 +144,8 @@ ssh-keyscan -t rsa,ecdsa,ed25519 "$VIGOR_HOST" 2>/dev/null | ssh-keygen -lf - -E
 # Generate approve keys for writes:
 node tools/approve-keygen.mjs
 # → set VIGOR_APPROVE_PUBKEY from the printed value / public PEM
-# Recommended local surface:
-# EXPOSE_TOOLS=readonly
+# Default exposure is readonly; opt in to all 666 tools with:
+# EXPOSE_TOOLS=all
 chmod 600 .env
 npm install
 npm run build

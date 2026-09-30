@@ -3,7 +3,7 @@ import { operations } from '@jooservices/vigor3912s-sdk/operations';
 import { inputSchemaFor } from '@jooservices/vigor3912s-sdk/schemas';
 import { buildVoidOperationIndex } from '../../sdk/void-operation-index.js';
 import { allCommands, findCommand, REGISTRY } from './index.js';
-import { RELEASED_GENERATED_TOOL_IDS } from './families/sdk-generated.js';
+import { buildSdkGeneratedFamily, RELEASED_GENERATED_TOOL_IDS } from './families/sdk-generated.js';
 
 describe('sdk-generated family', () => {
   it('registers every void SDK CLI frame (covered by manifestId, not by CLI-string heuristics)', () => {
@@ -29,6 +29,21 @@ describe('sdk-generated family', () => {
       expect(findCommand(id), id).toBeDefined();
       expect(findCommand(id)!.sdk, id).toBeDefined();
     }
+  });
+
+  it('throws when a released generated id collides with a curated tool', () => {
+    expect(() => buildSdkGeneratedFamily([{
+      family: 'test',
+      desc: 'test family',
+      commands: [{
+        id: 'service',
+        family: 'test',
+        kind: 'read',
+        desc: 'test command',
+        render: () => 'service',
+        args: {},
+      }],
+    }])).toThrow('sdk-generated: released tool id collision for "service"');
   });
 
   it('renders a stable CLI for a void-classified generated tool', () => {

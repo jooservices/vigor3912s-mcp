@@ -32,6 +32,7 @@ const env = {
   VIGOR_PASSWORD: 'fake-admin',
   VIGOR_LOG_DB: LOG_DB,
   VIGOR_AUTO_COMMIT: 'true',
+  VIGOR_READ_ONLY: 'false',
   EXPOSE_TOOLS: 'all',
   VIGOR_APPROVE_PUBKEY: publicKeyToConfigValue(keys.publicKeyPem),
   VIGOR_APPROVE_PRIVKEY_FILE: PRIV,

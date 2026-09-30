@@ -58,6 +58,7 @@ export interface SdkCommandOptions {
   snapshotRead?: string;
   skipCommit?: boolean;
   partial?: boolean;
+  timeoutMs?: number;
 }
 
 function issuesOf(error: { issues: { path: (string | number)[]; message: string }[] }): string {
@@ -131,5 +132,6 @@ export const S = (
     ...(opts.snapshotRead ? { snapshotRead: opts.snapshotRead } : {}),
     ...(opts.skipCommit ? { skipCommit: opts.skipCommit } : {}),
     sdk: { manifestId, toInput, validate, ...(opts.partial ? { partial: true } : {}) },
+    ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
   };
 };

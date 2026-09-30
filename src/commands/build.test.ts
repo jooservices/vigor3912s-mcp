@@ -10,7 +10,7 @@ import {
   publicKeyToConfigValue,
   signApproval,
 } from '../tools/approve-crypto.js';
-import { readCommands, writeCommands } from './registry/index.js';
+import { allCommands, readCommands, writeCommands } from './registry/index.js';
 
 const keys = generateApproveKeyPair();
 const approvePublicKey = publicKeyToConfigValue(keys.publicKeyPem);
@@ -25,7 +25,7 @@ function cfg(overrides: Record<string, unknown> = {}) {
     readOnly: false,
     autoCommit: false,
     approvePublicKey,
-    exposeTools: [],
+    exposeTools: { mode: 'all' as const },
     disabledTools: [],
     toolOutputLimit: 16000,
     sshInsecureSkipHostVerify: true,
@@ -344,10 +344,50 @@ describe('registry -> MCP tool generation', () => {
     await server.close();
   });
 
+  it('registers 220 read tools by default and 666 tools with explicit all mode', async () => {
+    const read = await startServer(cfg({ exposeTools: { mode: 'list', ids: readCommands().map((cmd) => cmd.id) } }));
+    expect((await read.mcp.listTools()).tools).toHaveLength(220);
+    await read.server.close();
+
+    const all = await startServer(cfg({ exposeTools: { mode: 'all' } }));
+    expect((await all.mcp.listTools()).tools).toHaveLength(666);
+    expect(allCommands()).toHaveLength(666);
+    await all.server.close();
+  });
+
+  it('registers exactly an explicit tool id list', async () => {
+    const { mcp, server } = await startServer(
+      cfg({ exposeTools: { mode: 'list', ids: ['wan_status', 'sys_name'] } }),
+    );
+    expect((await mcp.listTools()).tools.map((tool) => tool.name).sort()).toEqual([
+      'sys_name',
+      'wan_status',
+    ]);
+    await server.close();
+  });
+
+  it('passes per-tool timeouts to the client', async () => {
+    const timeouts: number[] = [];
+    FakeVigorClient.readHook = async (_command, options) => {
+      timeouts.push(options?.timeoutMs ?? 0);
+      return 'ok';
+    };
+    const { mcp, server } = await startServer();
+    await mcp.callTool({ name: 'ip_tracert', arguments: { host: '8.8.8.8' } });
+    await mcp.callTool({ name: 'ip6_tracert', arguments: { host: '2001:4860:4860::8888' } });
+    await mcp.callTool({ name: 'sdk_ip_tracert', arguments: { targetIp: '8.8.8.8' } });
+    await mcp.callTool({ name: 'sdk_ip6_tracert', arguments: { target: '2001:4860:4860::8888' } });
+    await mcp.callTool({ name: 'sdk_ip_ping', arguments: { targetIp: '8.8.8.8' } });
+    await mcp.callTool({ name: 'sdk_ip6_ping', arguments: { target: '2001:4860:4860::8888' } });
+    await mcp.callTool({ name: 'wan_status', arguments: {} });
+    expect(timeouts).toEqual([60000, 60000, 60000, 60000, 60000, 60000, 15000]);
+    await server.close();
+  });
+
   it('exposeTools allowlist and disabledTools denylist filter registration', async () => {
     FakeVigorClient.script = { '': '' };
     const { mcp, server } = await startServer(
-      cfg({ exposeTools: ['show_session', 'wan_status'], disabledTools: ['wan_status'] }),
+      cfg({ exposeTools: { mode: 'list', ids: ['show_session', 'wan_status'] }, disabledTools: ['wan_status'] }),
     );
     const names = new Set((await mcp.listTools()).tools.map((t) => t.name));
     expect(names.has('show_session')).toBe(true);

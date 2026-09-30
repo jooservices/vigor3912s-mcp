@@ -49,6 +49,9 @@ goes through the confirm gate; commands marked **dangerous** also need
 | --- | --- | --- |
 | Ping | `ip_ping` | `{ host }` (5 packets) |
 | Traceroute | `ip_tracert` | `{ host }` |
+
+Traceroute reads and generated SDK ping/traceroute variants have a 60-second
+command timeout. Other read tools use 15 seconds by default.
 | Sessions | `show_session` | — |
 | CPU / memory | `show_cpu` / `show_memory` | — |
 | NAT table | `show_nat` | — |
