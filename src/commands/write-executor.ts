@@ -1,7 +1,8 @@
-import { LogStore, redactArgs, redactCommand } from '../db/log.js';
+import { LogStore } from '../db/log.js';
 import type { VigorClient } from '../ssh/client.js';
 import { buildSignPayload } from '../tools/approve-crypto.js';
 import { ConfirmError, type ConfirmGate } from '../tools/confirm-gate.js';
+import { redactArgs, redactCommand } from '../tools/redaction.js';
 import { errCode, errMsg, iso, timingOf } from './tool-log.js';
 import type { CommandDef } from './registry/index.js';
 import { findCommand } from './registry/index.js';

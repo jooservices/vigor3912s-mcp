@@ -1,8 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z, type ZodRawShape } from 'zod';
-import { LogStore, redactArgs } from '../db/log.js';
+import { LogStore } from '../db/log.js';
 import type { VigorClient } from '../ssh/client.js';
 import type { ConfirmGate } from '../tools/confirm-gate.js';
+import { redactArgs } from '../tools/redaction.js';
 import { errCode, errMsg, iso, timingOf } from './tool-log.js';
 import type { CommandDef } from './registry/index.js';
 import { allCommands } from './registry/index.js';
