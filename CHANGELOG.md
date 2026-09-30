@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-09-30
+
+### Fixed
+
+- `wan_status` and other paged reads no longer fail with `idle timeout after
+  5000ms with no output`. ssh-client 1.3.0 answers the real DrayOS pager
+  marker; CI and E2E now build against ssh-client `v1.3.0`.
+- The default read tool timeout is 20 seconds (was 15). The budget also covers
+  the SSH connect on the first call, so a first `wan_status` over a
+  high-latency link no longer exceeds it.
+
 ## [2.0.0] - 2026-09-29
 
 ### Breaking
@@ -177,7 +188,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial read-only MCP server (8 tools) for the DrayTek Vigor 3912S over SSH.
 - Live recon on the device (prompt, pager, verified commands, fw 4.4.7_RC2).
 
-[Unreleased]: https://github.com/jooservices/vigor3912s-mcp/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/jooservices/vigor3912s-mcp/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/jooservices/vigor3912s-mcp/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/jooservices/vigor3912s-mcp/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/jooservices/vigor3912s-mcp/compare/v0.6.0...v1.0.0
 [0.6.0]: https://github.com/jooservices/vigor3912s-mcp/compare/v0.5.0...v0.6.0
