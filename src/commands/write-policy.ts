@@ -8,6 +8,8 @@
  * file owns AI/ops confirmation UX.
  */
 
+import { operationFor } from '../sdk/operation-index.js';
+
 export type ConfirmTier = 'auto' | 'confirm' | 'dual';
 
 export interface WritePolicy {
@@ -40,10 +42,11 @@ export interface ResolvedToolPolicy {
 export function resolveConfirmTier(
   kind: 'read' | 'write',
   policy: WritePolicy | undefined,
+  sdkClassification?: string,
 ): ConfirmTier {
   if (kind === 'read') return 'auto';
   // Writes never skip the signature gate via `auto`.
-  if (policy?.confirm === 'dual') return 'dual';
+  if (policy?.confirm === 'dual' || sdkClassification === 'destructive') return 'dual';
   return 'confirm';
 }
 
@@ -52,13 +55,6 @@ export function resolveConfirmTier(
  * Prefer listing lockout and secret-bearing tools here over burying flags
  * inside W(...) in the registry.
  */
-const EXTRA_WRITE_POLICY: Record<string, WritePolicy> = {};
-
-/** Register policy for generated tools (e.g. sdk_generated destructive). */
-export function registerExtraWritePolicy(id: string, policy: WritePolicy): void {
-  EXTRA_WRITE_POLICY[id] = policy;
-}
-
 export const WRITE_POLICY: Readonly<Record<string, WritePolicy>> = {
   // --- sys ---
   sys_passwd: { confirm: 'dual', secretArgs: ['old', 'new'] },
@@ -162,9 +158,13 @@ export function applyWritePolicy<T extends { id: string; kind: string }>(
   cmd: T,
 ): T & ResolvedToolPolicy {
   const kind = cmd.kind === 'write' ? 'write' : 'read';
-  const policy =
-    kind === 'write' ? (WRITE_POLICY[cmd.id] ?? EXTRA_WRITE_POLICY[cmd.id]) : undefined;
-  const confirm = resolveConfirmTier(kind, policy);
+  const policy = kind === 'write' ? WRITE_POLICY[cmd.id] : undefined;
+  const sdk = 'sdk' in cmd && cmd.sdk && typeof cmd.sdk === 'object' ? cmd.sdk : undefined;
+  const manifestId = sdk && 'manifestId' in sdk && typeof sdk.manifestId === 'string'
+    ? sdk.manifestId
+    : undefined;
+  const sdkClassification = manifestId ? operationFor(manifestId)?.classification : undefined;
+  const confirm = resolveConfirmTier(kind, policy, sdkClassification);
   const { confirm: _c, ...rest } = policy ?? {};
   return {
     ...cmd,

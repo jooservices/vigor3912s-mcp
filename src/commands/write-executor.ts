@@ -110,13 +110,41 @@ async function executeWriteLocked(
 ): Promise<Record<string, unknown>> {
   const { gate, store, autoCommit } = opts;
   const { confirmation_id, signature, acknowledge, ...rest } = args;
+  const started = Date.now();
+  const secretArgs = cmd.secretArgs ?? [];
+  const argsLog = redactArgs(rest, secretArgs);
+  let command: string;
+  let sdkInput: unknown;
+  try {
+    command = cmd.render(rest);
+    if (cmd.sdk) sdkInput = resolveSdkInput(cmd.sdk, rest);
+  } catch (e) {
+    const code = errCode(e) ?? 'invalid';
+    const message = errMsg(e);
+    store.request({
+      toolId: cmd.id,
+      kind: 'write',
+      command: cmd.id,
+      argsJson: argsLog,
+      outcome: 'denied',
+      errorCode: code,
+      errorMsg: message,
+      durationMs: Date.now() - started,
+    });
+    store.writeAudit({
+      requestId: null,
+      toolId: cmd.id,
+      command: cmd.id,
+      status: 'denied',
+      success: null,
+      errorCode: code,
+      errorMsg: message,
+    });
+    throw e;
+  }
   const cid = typeof confirmation_id === 'string' ? confirmation_id : undefined;
   const sig = typeof signature === 'string' ? signature : undefined;
-  const secretArgs = cmd.secretArgs ?? [];
-  const command = cmd.render(rest);
   const commandLog = redactCommand(command, rest, secretArgs);
-  const argsLog = redactArgs(rest, secretArgs);
-  const started = Date.now();
   const message = confirmMessage(commandLog, cmd, gate.ttlMs);
   // Writes never use `auto` as a confirm bypass (reads never reach here).
   const tier = cmd.confirm === 'auto' ? 'confirm' : (cmd.confirm ?? 'confirm');
@@ -224,7 +252,7 @@ async function executeWriteLocked(
   try {
     client.authorizeWrite(command);
     raw = cmd.sdk
-      ? await client.runWriteOperation(cmd.sdk.manifestId, resolveSdkInput(cmd.sdk, rest))
+      ? await client.runWriteOperation(cmd.sdk.manifestId, sdkInput)
       : await client.runWriteCommand(command);
     if (isRouterCliFailure(raw)) {
       throw Object.assign(new Error(`router rejected command: ${raw.trim().slice(0, 200)}`), {

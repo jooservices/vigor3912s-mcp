@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { findCommand, readCommands, writeCommands } from './registry/index.js';
-import { WRITE_POLICY, resolveConfirmTier } from './write-policy.js';
+import { describe, expect, it, vi } from 'vitest';
+import { operationFor } from '../sdk/operation-index.js';
+import { allCommands, findCommand, readCommands, writeCommands } from './registry/index.js';
+import { applyWritePolicy, WRITE_POLICY, resolveConfirmTier } from './write-policy.js';
 
 describe('WRITE_POLICY / ConfirmTier', () => {
   it('only references write tools that exist in the registry', () => {
@@ -14,6 +15,40 @@ describe('WRITE_POLICY / ConfirmTier', () => {
     expect(resolveConfirmTier('read', undefined)).toBe('auto');
     expect(resolveConfirmTier('write', undefined)).toBe('confirm');
     expect(resolveConfirmTier('write', { confirm: 'dual' })).toBe('dual');
+  });
+
+  it('derives dual confirmation from destructive SDK classification', () => {
+    expect(operationFor('cli.fs.format')?.classification).toBe('destructive');
+    const cmd = applyWritePolicy({
+      id: 'test_curated_destructive',
+      kind: 'write',
+      sdk: { manifestId: 'cli.fs.format' },
+    });
+
+    expect(cmd.confirm).toBe('dual');
+  });
+
+  it('keeps resolved policies stable after the registry is re-imported', async () => {
+    const snapshot = (commands: ReturnType<typeof allCommands>) =>
+      commands.map(({ id, confirm, affectsNetwork, secretArgs, snapshotRead, skipCommit }) => ({
+        id,
+        confirm,
+        affectsNetwork,
+        secretArgs,
+        snapshotRead,
+        skipCommit,
+      }));
+    const before = snapshot(allCommands());
+    const policyIds = Object.keys(WRITE_POLICY).sort();
+
+    vi.resetModules();
+    const [{ allCommands: reloadedCommands }, { WRITE_POLICY: reloadedPolicy }] = await Promise.all([
+      import('./registry/index.js'),
+      import('./write-policy.js'),
+    ]);
+
+    expect(snapshot(reloadedCommands())).toEqual(before);
+    expect(Object.keys(reloadedPolicy).sort()).toEqual(policyIds);
   });
 
   it('merges confirm tier onto findCommand / writeCommands', () => {

@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LogStore } from '../db/log.js';
 import { FakeVigorClient } from '../test/fake-vigor-client.js';
 import {
@@ -96,6 +96,44 @@ describe('executeWrite', () => {
     );
     expect(body.confirm_token).toBeUndefined();
     expect(client.written).toEqual([]);
+  });
+
+  it('rejects invalid SDK input before creating an intent and audits the denial', async () => {
+    const { client, gate } = setup();
+    const cmd = findCommand('vpn_wg_peer')!;
+    const input = { index: 1, action: 'allowedIps', allowedIps: '10.0.0.0/24', key: 'x' };
+
+    await expect(
+      executeWrite(cmd, input, client, { gate, store, autoCommit: false }),
+    ).rejects.toThrow('invalid input for SDK operation "cli.vpn.wg.peer"');
+    expect(gate.size).toBe(0);
+    expect(store.query<{ status: string; error_code: string }>(
+      'SELECT status, error_code FROM write_audit',
+    )).toEqual([{ status: 'denied', error_code: 'invalid' }]);
+  });
+
+  it('authorizes the exact validated input rendered in the preview', async () => {
+    const { client, gate } = setup();
+    const authorize = vi.spyOn(client, 'authorizeWrite');
+    const cmd = findCommand('wan_disable')!;
+    const input = { wan: 1 };
+    const preview = await executeWrite(cmd, input, client, { gate, store, autoCommit: false });
+    const signature = signApproval(
+      keys.privateKeyPem,
+      String(preview.confirmation_id),
+      String(preview.nonce),
+      String(preview.command_digest),
+      Number(preview.expires_at),
+    );
+    FakeVigorClient.script[String(preview.preview)] = 'disabled';
+    await executeWrite(
+      cmd,
+      { ...input, confirmation_id: preview.confirmation_id, signature, acknowledge: true },
+      client,
+      { gate, store, autoCommit: false },
+    );
+
+    expect(authorize).toHaveBeenCalledWith(preview.preview);
   });
 
   it('reports the configured confirmation TTL in the preview message', async () => {

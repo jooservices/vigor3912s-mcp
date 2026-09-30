@@ -89,6 +89,38 @@ describe('SdkVigorClient', () => {
     });
   });
 
+  it('consumes authorization when a forbidden write attempt is refused', async () => {
+    const client = new SdkVigorClient(config());
+    client.authorizeWrite('sys halt');
+    await expect(client.runWriteCommand('sys halt')).rejects.toMatchObject({ code: 'invalid' });
+    await expect(client.runWriteCommand('sys halt')).rejects.toMatchObject({ code: 'unauthorized' });
+  });
+
+  it('keeps only the most recently authorized command', async () => {
+    const client = new SdkVigorClient(config());
+    client.authorizeWrite('sys name wan1 X');
+    client.authorizeWrite('sys name wan1 Y');
+    await expect(client.runWriteCommand('sys name wan1 X')).rejects.toMatchObject({
+      code: 'unauthorized',
+    });
+    await expect(client.runWriteCommand('sys name wan1 Y')).rejects.toMatchObject({
+      code: 'unauthorized',
+    });
+  });
+
+  it('consumes authorization when read-only mode refuses a write', async () => {
+    const cfg = config({ readOnly: true });
+    const client = new SdkVigorClient(cfg);
+    client.authorizeWrite('wan disable WAN1');
+    await expect(client.runWriteCommand('wan disable WAN1')).rejects.toMatchObject({
+      code: 'unauthorized',
+    });
+    cfg.readOnly = false;
+    await expect(client.runWriteCommand('wan disable WAN1')).rejects.toMatchObject({
+      code: 'unauthorized',
+    });
+  });
+
   it('refuses writes in read-only mode', async () => {
     const client = new SdkVigorClient(config({ readOnly: true }));
     client.authorizeWrite('wan disable WAN1');

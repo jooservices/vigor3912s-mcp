@@ -108,7 +108,7 @@ export const S = (
   const validate = opts.validate ?? autoValidate;
 
   const render: CommandDef['render'] = (args) => {
-    const input = toInput(args);
+    const input = validate(toInput(args));
     return op.buildFrames(input).map((f) => f.command).join('\n');
   };
   return {

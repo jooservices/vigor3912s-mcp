@@ -51,6 +51,11 @@ describe('S (SDK-backed command builder)', () => {
     expect(() => cmd.sdk?.validate?.({ apIndex: 'not-a-number' })).toThrow(/invalid input for SDK operation/);
   });
 
+  it('validates SDK input before rendering a command', () => {
+    const cmd = S('apm_apsyslog_sdk_bad_render', 'apm', 'cli.apm.apsyslog', 'AP syslog');
+    expect(() => cmd.render({ apIndex: 1, bogus: true })).toThrow(/invalid input for SDK operation/);
+  });
+
   it('a caller-supplied validate overrides the default', () => {
     const cmd = S('apm_apsyslog_sdk_override', 'apm', 'cli.apm.apsyslog', 'AP syslog', {
       args: { apIndex: z.number() },

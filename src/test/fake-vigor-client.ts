@@ -21,7 +21,7 @@ export class FakeVigorClient implements VigorClient {
   static script: Record<string, string | string[]> = {};
 
   readonly written: string[] = [];
-  private writeAuthorized = new Set<string>();
+  private writeAuthorized: string | null = null;
   private lastTiming: CommandTiming | null = null;
   private closed = false;
 
@@ -66,20 +66,21 @@ export class FakeVigorClient implements VigorClient {
   }
 
   authorizeWrite(command: string): void {
-    this.writeAuthorized.add(command);
+    this.writeAuthorized = command;
   }
 
   async runWriteCommand(command: string, _opts?: RunCommandOptions): Promise<string> {
-    if (this.readOnly) {
-      throw new VigorCommandError('unauthorized', 'read-only mode is enabled; write commands are refused');
-    }
-    if (!this.writeAuthorized.has(command)) {
+    const authorized = this.writeAuthorized === command;
+    this.writeAuthorized = null;
+    if (!authorized) {
       throw new VigorCommandError(
         'unauthorized',
         `write command was not confirmed and was refused: ${command}`,
       );
     }
-    this.writeAuthorized.delete(command);
+    if (this.readOnly) {
+      throw new VigorCommandError('unauthorized', 'read-only mode is enabled; write commands are refused');
+    }
     if (this.closed) throw new VigorCommandError('closed', 'client is closed');
     return this.exec(command);
   }
@@ -89,6 +90,8 @@ export class FakeVigorClient implements VigorClient {
     input: unknown,
     _opts?: RunCommandOptions,
   ): Promise<string> {
+    const authorizedCommand = this.writeAuthorized;
+    this.writeAuthorized = null;
     const op = operationFor(manifestId);
     if (!op) {
       throw new VigorCommandError('invalid', `unknown SDK operation and was refused: ${manifestId}`);
@@ -96,16 +99,15 @@ export class FakeVigorClient implements VigorClient {
     const command = renderFrames(op, input)
       .map((f) => f.command)
       .join('\n');
-    if (this.readOnly) {
-      throw new VigorCommandError('unauthorized', 'read-only mode is enabled; write commands are refused');
-    }
-    if (!this.writeAuthorized.has(command)) {
+    if (authorizedCommand !== command) {
       throw new VigorCommandError(
         'unauthorized',
         `write command was not confirmed and was refused: ${command}`,
       );
     }
-    this.writeAuthorized.delete(command);
+    if (this.readOnly) {
+      throw new VigorCommandError('unauthorized', 'read-only mode is enabled; write commands are refused');
+    }
     if (this.closed) throw new VigorCommandError('closed', 'client is closed');
     return this.exec(command);
   }
