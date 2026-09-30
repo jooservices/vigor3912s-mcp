@@ -117,6 +117,8 @@ Every registry command becomes an MCP tool:
 
 - Node.js >= 24.21.0 \< 25 (see `package.json` `engines` / `.nvmrc`)
 - Sibling packages for local/CI installs: `../ssh-client`, `../vigor3912s-sdk`
+- Compatible sibling releases: `@jooservices/ssh-client` >= 1.2.0 and
+  `@jooservices/vigor3912s-sdk` >= 2.0.0 (CI defaults to v1.2.0 / v2.0.0)
 - Router SSH enabled (`System Maintenance >> Management`), reachable on the LAN
 - Admin password and **SSH host fingerprint** in `.env`
 - Ed25519 approve public key unless `VIGOR_READ_ONLY=true`
