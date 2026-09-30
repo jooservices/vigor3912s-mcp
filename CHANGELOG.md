@@ -6,70 +6,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-29
+
 ### Breaking
 
-- Tool exposure now defaults to the 220 read tools. Add `EXPOSE_TOOLS=all` to
-  `.env` to preserve the previous full-tool exposure.
+- Typed tool argument schemas and invocation are now derived from SDK operation
+  schemas. Clients relying on earlier untyped argument shapes must use the
+  schemas advertised by each tool.
+- When unset or empty, `EXPOSE_TOOLS` now registers only the 220 read tools.
+  Add `EXPOSE_TOOLS=all` to `.env` to expose the full 666-tool catalog.
+- Secret values in write previews use named `<redacted:FIELD>` placeholders;
+  approval requires interactive re-entry and exact command-digest validation.
+- `tools/approve.mjs --payload` now requires `--blind` and prints a warning.
+- The generated SDK tool family is now named `sdk_generated` (previously
+  `sdk_void`). Consumers matching the old family name must update.
 
 ### Added
 
-- **Typed invoke everywhere, schema-driven**: `jsonSchemaToZod` now converts
-  any implemented SDK operation's input schema (not just top-level
-  `action`-discriminated `oneOf`) — auto-detects a common `const`
-  discriminator by any property name for object `oneOf`s, falls back to a
-  plain `z.union` when branches share no discriminator, and wraps a
-  non-object top-level shape (mixed literal/object `oneOf`, or a bare
-  scalar/array) under a single `input` arg for MCP tool args.
-- The `S(...)` command builder now derives a tool's `args`, `toInput`, and
-  `validate` from the SDK's published input schema
-  (`inputSchemaFor(manifestId)`) automatically; callers may still override
-  `args`/`toInput` (e.g. a curated legacy arg shape) and still get SDK
-  schema validation on the mapped input.
-- `families/sdk-generated.ts` (was `families/sdk-void.ts`) now registers a
-  tool for **every** implemented SDK operation not yet bound to a curated
-  tool's `cmd.sdk.manifestId` (previously only zero-arg/void operations).
-- All curated migration batches now execute through typed `invoke()` with
-  schema validation. The raw escape hatch is limited to the three reviewed
-  OD-1 compatibility tools.
-- `src/commands/registry/sdk-census.test.ts` — acceptance gate: every
-  implemented SDK operation is bound to a tool (or a reviewed, currently
-  empty, `SDK_TOOL_EXCLUSIONS`); every raw (non-SDK) tool is exactly the
-  reviewed `RAW_EXECUTE_ALLOWLIST` (three OD-1 compatibility tools); a sample
-  of generated tools' `full` zod schema accepts a valid
-  input and rejects an invalid one; read tools only bind to SDK
-  read-classified operations; destructive-classified tools are dual-confirm.
+- SDK-derived tool schemas now cover implemented operations, including
+  generated tools, and every SDK invocation validates against its typed input.
+  The raw command path remains limited to three reviewed compatibility tools.
+- The command registry provides 666 tools in 43 families (220 read / 446
+  write), including generated tools for uncovered SDK operations.
+- Generated write tools inherit secret-field classification from SDK schemas;
+  sensitive read output and snapshots are excluded from persisted logs.
 
-### Changed
+### Fixed
 
-- Coverage now includes registry builders, registry resolution, SDK-generated
-  tools and MCP registration while excluding only static family catalogs,
-  entry-point wiring and test doubles.
-- Registry command arrays and ID lookups are now cached; SQLite insert
-  statements are prepared once per log store, and the approval key is parsed
-  once at configuration load.
-- Read command timeouts now come from registry metadata. Traceroute tools and
-  generated SDK ping/traceroute tools use 60 seconds; other reads use 15.
-- Relative database, pending-confirmation and `.env` paths now resolve from the
-  package root; `VIGOR_PENDING_FILE` configures both the server and signer CLI,
-  while `VIGOR_LOG_DB=:memory:` disables pending-file persistence.
-- Tool surface: **666 tools / 43 families** (220 read + 446 write), with all
-  640 local SDK operations reachable, 663 SDK-backed tools, and three reviewed
-  OD-1 raw compatibility tools. The count reflects the local, unreleased SDK
-  schema/operation branch used by this integration.
-- Updated the MCP lockfile to `@jooservices/ssh-client` `1.2.0` and
-  `@jooservices/vigor3912s-sdk` `2.0.0`; command-timeout reconnect behavior is
-  preserved through the transport adapter.
-- Local real-router E2E remains read-only; CI E2E runs the full tool surface,
-  including confirmed writes, only against the simulated DrayOS server.
+- Invalid SDK write input is rejected before approval intent creation; the
+  preview and invoked command are built from the same validated input.
+- Write authorization is single-use even after a failed attempt, and forbidden
+  command matching handles case and whitespace consistently.
+- SDK sessions recover after output-limit and abort failures. MCP cancellation
+  reaches reads and stops writes before dispatch; an already-sent write is
+  completed and audited.
+- Logging now records render failures, links audits to their exact request,
+  writes pending intents atomically, and resolves data paths from the package
+  root. `VIGOR_LOG_DB=:memory:` disables pending-file persistence.
+- Registry lookups and SQLite insert statements are reused. Read timeouts are
+  defined per tool; traceroute and generated ping/traceroute operations use
+  60 seconds.
+- Coverage now includes the changed registry and runtime paths while retaining
+  the 90% threshold on every metric.
 
 ### Security
 
-- Invalid or non-Ed25519 approval public keys now fail during configuration
-  loading with a clear error; the SSH transport regression covers invalid host
-  fingerprints when the transport is created.
-- Typed write execution rejects read-classified operations, keeps single-use
-  authorization, and redacts credentials from generated SDK-tool previews and
-  audit logs.
+- **S1:** SDK schema string fields identified as secrets are redacted from
+  previews, pending files, request arguments, audit commands and stored output.
+- **S2:** redacted approvals prompt for hidden re-entry and sign only when the
+  reconstructed command matches the requested digest; blind payload signing
+  requires an explicit flag and warning.
+- **S3–S4:** write authorization is one-shot, and normalized forbidden commands
+  cannot be bypassed with case, whitespace or suffix variations.
+- **S5:** sensitive read output and sensitive before/after snapshots are not
+  persisted; the live tool response remains available to the caller.
+- **S6:** invalid or non-Ed25519 approval keys fail during configuration
+  loading. SSH host fingerprints are validated when the transport is created.
+- Typed write execution rejects read-classified SDK operations.
 
 ## [1.0.0] - 2026-09-15
 
@@ -183,3 +176,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial read-only MCP server (8 tools) for the DrayTek Vigor 3912S over SSH.
 - Live recon on the device (prompt, pager, verified commands, fw 4.4.7_RC2).
+
+[Unreleased]: https://github.com/jooservices/vigor3912s-mcp/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/jooservices/vigor3912s-mcp/compare/v1.0.0...v2.0.0
+[1.0.0]: https://github.com/jooservices/vigor3912s-mcp/compare/v0.6.0...v1.0.0
+[0.6.0]: https://github.com/jooservices/vigor3912s-mcp/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/jooservices/vigor3912s-mcp/releases/tag/v0.5.0
