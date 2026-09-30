@@ -18,7 +18,12 @@ describe('mapSdkError', () => {
     [sdkErrorCodes.operationNotImplemented, 'connect'],
   ] as const)('maps Vigor3912SError %s to %s', (sdkCode, vigorCode) => {
     const err = new Vigor3912SError(sdkCode, `sdk:${sdkCode}`);
-    expect(mapSdkError(err)).toMatchObject({ code: vigorCode, message: `sdk:${sdkCode}` });
+    expect(mapSdkError(err)).toMatchObject({
+      code: vigorCode,
+      message: sdkCode === sdkErrorCodes.outputLimitExceeded
+        ? 'sdk:output_limit_exceeded The output limit was reached; narrow the query and try again.'
+        : `sdk:${sdkCode}`,
+    });
   });
 
   it('maps plain Error message to connect', () => {

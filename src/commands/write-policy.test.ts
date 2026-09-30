@@ -1,9 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 import { operationFor } from '../sdk/operation-index.js';
 import { allCommands, findCommand, readCommands, writeCommands } from './registry/index.js';
-import { applyWritePolicy, WRITE_POLICY, resolveConfirmTier } from './write-policy.js';
+import { applyToolPolicy, READ_POLICY, WRITE_POLICY, resolveConfirmTier } from './tool-policy.js';
 
 describe('WRITE_POLICY / ConfirmTier', () => {
+  it('marks the owner-approved sensitive read output list', () => {
+    const ids = [
+      'ddns_show', 'ddns_show_all', 'radius_show', 'radius_external_view',
+      'radius_external_viewprofile', 'ldap_view', 'tacacsplus_view', 'vpn_wg_show',
+      'usb_user_list', 'csm_appe_config', 'ip_ospf_cfg_show', 'mngt_rmtcfg_status', 'sys_cfg_status',
+    ];
+    const registeredReads = new Set(readCommands().map((command) => command.id));
+    expect(Object.keys(READ_POLICY).sort()).toEqual(ids.sort());
+    for (const id of ids) {
+      expect(registeredReads.has(id), `unknown sensitive read tool: ${id}`).toBe(true);
+      expect(readCommands().find((command) => command.id === id)?.sensitiveOutput).toBe(true);
+    }
+  });
+
   it('only references write tools that exist in the registry', () => {
     const ids = new Set(writeCommands().map((c) => c.id));
     for (const id of Object.keys(WRITE_POLICY)) {
@@ -19,13 +33,22 @@ describe('WRITE_POLICY / ConfirmTier', () => {
 
   it('derives dual confirmation from destructive SDK classification', () => {
     expect(operationFor('cli.fs.format')?.classification).toBe('destructive');
-    const cmd = applyWritePolicy({
+    const cmd = applyToolPolicy({
       id: 'test_curated_destructive',
       kind: 'write',
       sdk: { manifestId: 'cli.fs.format' },
     });
 
     expect(cmd.confirm).toBe('dual');
+  });
+
+  it('merges SDK-derived secret arguments with explicit write policy', () => {
+    const cmd = applyToolPolicy({
+      id: 'ip_bgp',
+      kind: 'write',
+      secretArgs: ['community'],
+    });
+    expect(cmd.secretArgs).toEqual(['community', 'key']);
   });
 
   it('keeps resolved policies stable after the registry is re-imported', async () => {
@@ -44,7 +67,7 @@ describe('WRITE_POLICY / ConfirmTier', () => {
     vi.resetModules();
     const [{ allCommands: reloadedCommands }, { WRITE_POLICY: reloadedPolicy }] = await Promise.all([
       import('./registry/index.js'),
-      import('./write-policy.js'),
+      import('./tool-policy.js'),
     ]);
 
     expect(snapshot(reloadedCommands())).toEqual(before);

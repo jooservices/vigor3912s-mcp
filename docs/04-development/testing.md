@@ -8,10 +8,11 @@
 | --- | --- |
 | statements / lines / functions / branches | ≥90% |
 
-Mocks: `FakeVigorClient` / `FakeSshClient`. Coverage excludes curated
-`registry/**`, `config.ts`, `index.ts`, `build.ts`, `confirm-gate.ts` (covered
-by dedicated/e2e flows). Human-confirm / signed-approval deny coverage is covered in
-`write-executor.test.ts`.
+Mocks: `FakeVigorClient` / `FakeSshClient`. Coverage includes runtime config,
+registry resolution, SDK-generated tools, MCP registration and approval code.
+It excludes test files, static curated family catalogs, the stdio `index.ts`
+entry point and test doubles. Human-confirm / signed-approval deny coverage is
+covered in `write-executor.test.ts`.
 
 ## E2E
 

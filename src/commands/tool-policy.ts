@@ -30,6 +30,22 @@ export interface WritePolicy {
   skipCommit?: boolean;
 }
 
+export const READ_POLICY: Readonly<Record<string, { sensitiveOutput?: true }>> = {
+  ddns_show: { sensitiveOutput: true },
+  ddns_show_all: { sensitiveOutput: true },
+  radius_show: { sensitiveOutput: true },
+  radius_external_view: { sensitiveOutput: true },
+  radius_external_viewprofile: { sensitiveOutput: true },
+  ldap_view: { sensitiveOutput: true },
+  tacacsplus_view: { sensitiveOutput: true },
+  vpn_wg_show: { sensitiveOutput: true },
+  usb_user_list: { sensitiveOutput: true },
+  csm_appe_config: { sensitiveOutput: true },
+  ip_ospf_cfg_show: { sensitiveOutput: true },
+  mngt_rmtcfg_status: { sensitiveOutput: true },
+  sys_cfg_status: { sensitiveOutput: true },
+};
+
 /** Resolved policy fields merged onto CommandDef. */
 export interface ResolvedToolPolicy {
   confirm: ConfirmTier;
@@ -37,6 +53,7 @@ export interface ResolvedToolPolicy {
   secretArgs?: string[];
   snapshotRead?: string;
   skipCommit?: boolean;
+  sensitiveOutput?: boolean;
 }
 
 export function resolveConfirmTier(
@@ -154,21 +171,27 @@ export const WRITE_POLICY: Readonly<Record<string, WritePolicy>> = {
   portmaptime_flush: { affectsNetwork: true },
 };
 
-export function applyWritePolicy<T extends { id: string; kind: string }>(
+export function applyToolPolicy<T extends { id: string; kind: string }>(
   cmd: T,
 ): T & ResolvedToolPolicy {
   const kind = cmd.kind === 'write' ? 'write' : 'read';
   const policy = kind === 'write' ? WRITE_POLICY[cmd.id] : undefined;
+  const readPolicy = kind === 'read' ? READ_POLICY[cmd.id] : undefined;
   const sdk = 'sdk' in cmd && cmd.sdk && typeof cmd.sdk === 'object' ? cmd.sdk : undefined;
   const manifestId = sdk && 'manifestId' in sdk && typeof sdk.manifestId === 'string'
     ? sdk.manifestId
     : undefined;
   const sdkClassification = manifestId ? operationFor(manifestId)?.classification : undefined;
   const confirm = resolveConfirmTier(kind, policy, sdkClassification);
-  const { confirm: _c, ...rest } = policy ?? {};
+  const { confirm: _c, secretArgs: policySecretArgs, ...rest } = policy ?? {};
+  const currentSecretArgs =
+    'secretArgs' in cmd && Array.isArray(cmd.secretArgs) ? cmd.secretArgs : [];
+  const secretArgs = [...new Set([...currentSecretArgs, ...(policySecretArgs ?? [])])];
   return {
     ...cmd,
     ...rest,
+    ...(secretArgs.length > 0 ? { secretArgs } : {}),
+    ...(readPolicy?.sensitiveOutput ? { sensitiveOutput: true } : {}),
     confirm,
   };
 }

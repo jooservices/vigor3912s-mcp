@@ -1,5 +1,5 @@
 import { voidOperationForCommand } from '../../sdk/void-operation-index.js';
-import { applyWritePolicy } from '../write-policy.js';
+import { applyToolPolicy } from '../tool-policy.js';
 import type { CommandDef, FamilyDef } from './types.js';
 import { showFamily } from './families/show.js';
 import { sysFamily } from './families/sys.js';
@@ -100,7 +100,7 @@ const CURATED_REGISTRY: FamilyDef[] = [
  */
 const SDK_VOID_BINDING_EXCLUSIONS = new Set(['local8021x_show_local_cer']);
 
-function attachSdkVoidBindings(families: readonly FamilyDef[]): FamilyDef[] {
+export function attachSdkVoidBindings(families: readonly FamilyDef[]): FamilyDef[] {
   return families.map((family) => ({
     ...family,
     commands: family.commands.map((cmd) => {
@@ -128,18 +128,29 @@ export const REGISTRY: FamilyDef[] = [
   buildSdkGeneratedFamily(LINKED_CURATED_REGISTRY),
 ];
 
-export function allCommands(): CommandDef[] {
-  return REGISTRY.flatMap((f) => f.commands).map(applyWritePolicy);
+const ALL_COMMANDS: readonly CommandDef[] = Object.freeze(
+  REGISTRY.flatMap((family) => family.commands).map(applyToolPolicy),
+);
+const COMMANDS_BY_ID = new Map(ALL_COMMANDS.map((command) => [command.id, command]));
+const READ_COMMANDS: readonly CommandDef[] = Object.freeze(
+  ALL_COMMANDS.filter((command) => command.kind === 'read'),
+);
+const WRITE_COMMANDS: readonly CommandDef[] = Object.freeze(
+  ALL_COMMANDS.filter((command) => command.kind === 'write'),
+);
+
+export function allCommands(): readonly CommandDef[] {
+  return ALL_COMMANDS;
 }
 
-export function readCommands(): CommandDef[] {
-  return allCommands().filter((c) => c.kind === 'read');
+export function readCommands(): readonly CommandDef[] {
+  return READ_COMMANDS;
 }
 
-export function writeCommands(): CommandDef[] {
-  return allCommands().filter((c) => c.kind === 'write');
+export function writeCommands(): readonly CommandDef[] {
+  return WRITE_COMMANDS;
 }
 
 export function findCommand(id: string): CommandDef | undefined {
-  return allCommands().find((c) => c.id === id);
+  return COMMANDS_BY_ID.get(id);
 }

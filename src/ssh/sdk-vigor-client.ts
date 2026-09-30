@@ -1,5 +1,7 @@
 import { Vigor3912SClient } from '@jooservices/vigor3912s-sdk';
 import type { TypedOperation } from '@jooservices/vigor3912s-sdk/operations';
+import { Vigor3912SError, sdkErrorCodes } from '@jooservices/vigor3912s-sdk';
+import type { Transport } from '@jooservices/vigor3912s-sdk/transport';
 import { isForbidden } from '../commands/forbidden.js';
 import { isAllowedReadCommand } from '../commands/read-allowlist.js';
 import type { VigorConfig } from '../config.js';
@@ -35,25 +37,24 @@ type ClientConfig = Pick<
  * Authorization / confirm / hard blocklist stay in MCP; the SDK does not authorize.
  */
 export class SdkVigorClient implements VigorClient {
-  private readonly transport: SshClientTransport;
-  private readonly sdk: Vigor3912SClient;
+  private session: { transport: Transport; sdk: Vigor3912SClient } | null = null;
   private writeAuthorized: string | null = null;
   private closed = false;
 
-  constructor(private readonly cfg: ClientConfig) {
-    this.transport = new SshClientTransport(cfg);
-    // Allow diagnostic tools (ping/tracert) up to 60s; callers may still lower via timeoutMs.
-    this.sdk = Vigor3912SClient.fromTransport(this.transport, {
-      limits: { commandTimeoutMs: 60_000 },
-    });
-  }
+  constructor(
+    private readonly cfg: ClientConfig,
+    private readonly transportFactory: (cfg: ClientConfig) => Transport = (value) =>
+      new SshClientTransport(value),
+  ) {}
 
   get lastCommandTiming(): CommandTiming | null {
-    return this.transport.lastCommandTiming;
+    const transport = this.session?.transport as (Transport & { lastCommandTiming?: CommandTiming | null }) | undefined;
+    return transport?.lastCommandTiming ?? null;
   }
 
   async connect(): Promise<void> {
-    await this.transport.ensureConnected();
+    const transport = this.current().transport as Transport & { ensureConnected?: () => Promise<void> };
+    await transport.ensureConnected?.();
   }
 
   async runCommand(command: string, opts: RunCommandOptions = {}): Promise<string> {
@@ -160,7 +161,32 @@ export class SdkVigorClient implements VigorClient {
 
   async disconnect(): Promise<void> {
     this.closed = true;
-    await this.transport.close('mcp_disconnect');
+    const session = this.session;
+    this.session = null;
+    await session?.transport.close('mcp_disconnect');
+  }
+
+  private current(): { transport: Transport; sdk: Vigor3912SClient } {
+    if (this.closed) throw new VigorCommandError('closed', 'client is closed');
+    if (!this.session) {
+      const transport = this.transportFactory(this.cfg);
+      this.session = {
+        transport,
+        // Allow diagnostic tools (ping/tracert) up to 60s; callers may lower via timeoutMs.
+        sdk: Vigor3912SClient.fromTransport(transport, {
+          limits: { commandTimeoutMs: 60_000 },
+        }),
+      };
+    }
+    return this.session;
+  }
+
+  private resetAfterSdkFailure(err: unknown): void {
+    if (this.closed || !(err instanceof Vigor3912SError)) return;
+    if (err.code !== sdkErrorCodes.outputLimitExceeded && err.code !== sdkErrorCodes.sessionClosed) return;
+    const old = this.session;
+    this.session = null;
+    if (old) void old.transport.close('mcp_reset').catch(() => undefined);
   }
 
   private renderFrames(op: AnyOperation, input: unknown): readonly { readonly command: string }[] {
@@ -193,9 +219,10 @@ export class SdkVigorClient implements VigorClient {
     };
     try {
       const operation = op as unknown as TypedOperation<unknown, unknown>;
-      const parsed = await this.sdk.invoke(operation, input, executeOpts);
+      const parsed = await this.current().sdk.invoke(operation, input, executeOpts);
       return formatInvokeResult(parsed);
     } catch (err) {
+      this.resetAfterSdkFailure(err);
       throw mapSdkError(err);
     }
   }
@@ -206,9 +233,10 @@ export class SdkVigorClient implements VigorClient {
       ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
     };
     try {
-      const result = await this.sdk.execute(command, executeOpts);
+      const result = await this.current().sdk.execute(command, executeOpts);
       return result.stdout;
     } catch (err) {
+      this.resetAfterSdkFailure(err);
       throw mapSdkError(err);
     }
   }

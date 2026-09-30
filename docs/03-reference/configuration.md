@@ -1,7 +1,8 @@
 # Configuration
 
-All configuration comes from environment variables (loaded from `.env` in the
-project directory via `dotenv`).
+All configuration comes from environment variables. The server loads `.env`
+from the package root; variables already set in the process environment take
+precedence. Relative data paths resolve from the package root.
 
 ## Connection
 
@@ -25,7 +26,8 @@ project directory via `dotenv`).
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `VIGOR_LOG_DB` | `data/vigor3912s.db` | SQLite log database path |
+| `VIGOR_LOG_DB` | `data/vigor3912s.db` | SQLite log database path; `:memory:` disables file-backed pending confirmations |
+| `VIGOR_PENDING_FILE` | beside `VIGOR_LOG_DB` | Pending write confirmations JSON path; relative paths resolve from the package root |
 
 ## Safety switches
 
@@ -45,13 +47,15 @@ Sign a pending write: `node tools/approve.mjs <confirmationId>`.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `EXPOSE_TOOLS` | *(empty = all)* | Whitelist of tool ids exposed to the AI |
+| `EXPOSE_TOOLS` | *(empty = readonly)* | Tool ids exposed to the AI; default registers 220 read tools |
 
 Special values:
 
 - `EXPOSE_TOOLS=readonly` → only read tools are registered (write tools do not
   exist in the tool list).
-- `EXPOSE_TOOLS=all` (or unset) → every tool is registered.
+- `EXPOSE_TOOLS=all` → every tool is registered (666 tools). This explicit
+  opt-in is required to expose write tools by default.
+- Unset or empty → only read tools are registered (220 tools).
 - Otherwise a comma-separated list of tool ids, e.g.
   `EXPOSE_TOOLS=wan_status,show_status,show_lan`.
 
@@ -63,6 +67,9 @@ For a local deployment against the real router, use `EXPOSE_TOOLS=readonly` so
 the AI surface is monitoring-only. GitHub Actions uses `EXPOSE_TOOLS=all`
 against the simulated DrayOS server and may exercise confirmed writes there;
 it never sends writes to a real router.
+
+The server logs its registered tool count to stderr at startup and warns when
+more than 128 tools are exposed.
 
 ## Output
 

@@ -1,29 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { LogStore, redactArgs, redactCommand } from './log.js';
-
-describe('redaction', () => {
-  it('redacts secret arg values from a rendered command', () => {
-    const cmd = 'sys passwd oldSecret newSecret';
-    expect(redactCommand(cmd, { old: 'oldSecret', new: 'newSecret' }, ['old', 'new'])).toBe(
-      'sys passwd *** ***',
-    );
-  });
-
-  it('redacts secret args in the args JSON', () => {
-    const args = { wan: 1, password: 's3cret' };
-    const out = JSON.parse(redactArgs(args, ['password']));
-    expect(out.password).toBe('***');
-    expect(out.wan).toBe(1);
-  });
-
-  it('does not touch non-secret args', () => {
-    const out = JSON.parse(redactArgs({ wan: 2, name: 'WAN2' }, ['password']));
-    expect(out.wan).toBe(2);
-    expect(out.name).toBe('WAN2');
-  });
-});
+import { LogStore } from './log.js';
 
 describe('LogStore', () => {
+  it('returns the id of an inserted request and null when insertion fails', () => {
+    const store = new LogStore(':memory:');
+    const id = store.request({
+      toolId: 'read', kind: 'read', command: 'read', argsJson: '{}', outcome: 'ok', durationMs: 1,
+    });
+    expect(id).toBeTypeOf('number');
+    store.close();
+    expect(store.request({
+      toolId: 'read', kind: 'read', command: 'read', argsJson: '{}', outcome: 'ok', durationMs: 1,
+    })).toBeNull();
+  });
+
   it('logs requests and write audits to an in-memory db', () => {
     const store = new LogStore(':memory:');
     store.request({
@@ -66,21 +56,6 @@ describe('LogStore', () => {
     store.close();
   });
 
-  it('returns null lastRequestId when empty', () => {
-    const store = new LogStore(':memory:');
-    expect(store.lastRequestId).toBeNull();
-    store.request({
-      toolId: 'x',
-      kind: 'read',
-      command: 'x',
-      argsJson: '{}',
-      outcome: 'ok',
-      durationMs: 1,
-    });
-    expect(store.lastRequestId).toBeTypeOf('number');
-    store.close();
-  });
-
   it('never throws when the db is unavailable', () => {
     const store = new LogStore(':memory:');
     store.close(); // force db to null
@@ -101,6 +76,19 @@ describe('LogStore', () => {
         success: null,
       });
     }).not.toThrow();
+  });
+
+  it('keeps insert methods as no-ops after close', () => {
+    const store = new LogStore(':memory:');
+    store.close();
+    expect(store.logRequest({
+      ts: new Date().toISOString(), toolId: 'x', kind: 'read', command: 'x', argsJson: '{}',
+      outcome: 'ok', durationMs: 1,
+    })).toBeNull();
+    expect(() => store.logWriteAudit({
+      requestId: null, ts: new Date().toISOString(), toolId: 'x', command: 'x',
+      status: 'preview', success: null,
+    })).not.toThrow();
   });
 
   it('rejects non-SELECT or multi-statement query SQL', () => {

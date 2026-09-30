@@ -1,5 +1,5 @@
 import type { ZodRawShape } from 'zod';
-import type { ConfirmTier } from '../write-policy.js';
+import type { ConfirmTier } from '../tool-policy.js';
 
 export type CommandKind = 'read' | 'write';
 
@@ -30,7 +30,7 @@ export interface CommandDef {
   args: ZodRawShape;
   /**
    * MCP confirm tier (Layer 2). Reads resolve to `auto`; writes default
-   * `confirm` unless write-policy sets `dual` (or rarely `auto`).
+   * `confirm` unless tool-policy sets `dual` (or rarely `auto`).
    */
   confirm?: ConfirmTier;
   /** Whether this command changes network-affecting state (extra warning). */
@@ -41,6 +41,10 @@ export interface CommandDef {
   snapshotRead?: string;
   /** Arg keys whose values must be redacted in logs (passwords, secrets). */
   secretArgs?: string[];
+  /** Router output can contain credentials or sensitive configuration; do not persist it. */
+  sensitiveOutput?: boolean;
+  /** Maximum duration for this read command, in milliseconds. */
+  timeoutMs?: number;
   /** Do not auto-run `sys commit` after this write (e.g. reboot, test mail). */
   skipCommit?: boolean;
   /** When set, this tool executes via the SDK's typed `invoke()` instead of a raw string. */

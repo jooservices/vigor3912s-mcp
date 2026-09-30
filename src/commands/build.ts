@@ -1,8 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z, type ZodRawShape } from 'zod';
-import { LogStore, redactArgs } from '../db/log.js';
+import { LogStore } from '../db/log.js';
 import type { VigorClient } from '../ssh/client.js';
 import type { ConfirmGate } from '../tools/confirm-gate.js';
+import { redactArgs } from '../tools/redaction.js';
 import { errCode, errMsg, iso, timingOf } from './tool-log.js';
 import type { CommandDef } from './registry/index.js';
 import { allCommands } from './registry/index.js';
@@ -13,18 +14,20 @@ function text(content: unknown): string {
   return JSON.stringify(content, null, 2);
 }
 
+export type ExposedTools = { mode: 'all' } | { mode: 'list'; ids: string[] };
+
 export interface RegisterOptions {
   gate: ConfirmGate;
   store: LogStore;
   readOnly?: boolean;
   autoCommit?: boolean;
-  exposeTools?: string[];
+  exposeTools?: ExposedTools;
   disabledTools?: string[];
   toolOutputLimit?: number;
 }
 
 function isToolEnabled(cmd: CommandDef, opts: RegisterOptions): boolean {
-  if (opts.exposeTools && opts.exposeTools.length > 0 && !opts.exposeTools.includes(cmd.id)) {
+  if (opts.exposeTools?.mode === 'list' && !opts.exposeTools.ids.includes(cmd.id)) {
     return false;
   }
   if (opts.disabledTools && opts.disabledTools.includes(cmd.id)) return false;
@@ -32,21 +35,23 @@ function isToolEnabled(cmd: CommandDef, opts: RegisterOptions): boolean {
   return true;
 }
 
-function registerRead(
+export function registerRead(
   server: McpServer,
   client: VigorClient,
   store: LogStore,
   cmd: CommandDef,
   outputLimit: number,
 ): void {
-  server.tool(cmd.id, `${cmd.desc} (read-only)`, cmd.args, async (args: Record<string, unknown>) => {
-    const command = cmd.render(args);
+  server.tool(cmd.id, `${cmd.desc} (read-only)`, cmd.args, async (args: Record<string, unknown>, extra) => {
+    let command = cmd.id;
     const started = Date.now();
     try {
-      const timeoutMs = cmd.id === 'ip_tracert' ? 60000 : 15000;
+      command = cmd.render(args);
+      const timeoutMs = cmd.timeoutMs ?? 15000;
+      const runOptions = { timeoutMs, ...(extra.signal ? { signal: extra.signal } : {}) };
       const raw = cmd.sdk
-        ? await client.runOperation(cmd.sdk.manifestId, resolveSdkInput(cmd.sdk, args), { timeoutMs })
-        : await client.runCommand(command, { timeoutMs });
+        ? await client.runOperation(cmd.sdk.manifestId, resolveSdkInput(cmd.sdk, args), runOptions)
+        : await client.runCommand(command, runOptions);
       const ended = Date.now();
       store.request({
         toolId: cmd.id,
@@ -55,7 +60,7 @@ function registerRead(
         argsJson: redactArgs(args, cmd.secretArgs ?? []),
         outcome: 'ok',
         durationMs: ended - started,
-        output: raw,
+        output: cmd.sensitiveOutput ? undefined : raw,
         requestedAt: iso(started),
         respondedAt: iso(ended),
         ...timingOf(client),
@@ -101,23 +106,27 @@ function registerWrite(
   };
   if (cmd.confirm === 'dual') schema.acknowledge = z.boolean().optional();
 
-  server.tool(cmd.id, `${cmd.desc} (write — requires signed approval)`, schema, async (args: Record<string, unknown>) => {
+  server.tool(cmd.id, `${cmd.desc} (write — requires signed approval)`, schema, async (args: Record<string, unknown>, extra) => {
     const body = await executeWrite(cmd, args, client, {
       gate,
       store,
       autoCommit,
+      signal: extra.signal,
     });
     return { content: [{ type: 'text' as const, text: text(body) }] };
   });
 }
 
-export function registerAllTools(server: McpServer, client: VigorClient, opts: RegisterOptions): void {
+export function registerAllTools(server: McpServer, client: VigorClient, opts: RegisterOptions): number {
   const { gate, store } = opts;
   const outputLimit = opts.toolOutputLimit ?? 16000;
   const autoCommit = opts.autoCommit ?? true;
+  let count = 0;
   for (const cmd of allCommands()) {
     if (!isToolEnabled(cmd, opts)) continue;
     if (cmd.kind === 'read') registerRead(server, client, store, cmd, outputLimit);
     else registerWrite(server, client, gate, store, cmd, autoCommit);
+    count += 1;
   }
+  return count;
 }

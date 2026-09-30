@@ -29,9 +29,12 @@ SDK-backed and three reviewed OD-1 compatibility tools remain raw. The SDK
 schema/operation branch is not released yet; CI must clone a remote SDK ref
 that contains `./schemas` before this integration is merge-ready.
 
-Local deployments should expose only read tools by default
-(`EXPOSE_TOOLS=readonly`). Write tools are exercised in CI against a simulated
-DrayOS server (`npm run e2e:testing`, `EXPOSE_TOOLS=all`).
+Local deployments expose only read tools by default (220 tools). Set
+`EXPOSE_TOOLS=all` explicitly to expose the full 666-tool catalog. Write tools
+are exercised in CI against a simulated DrayOS server (`npm run e2e:testing`).
+
+**Upgrade from 1.x:** the default exposure changes to read-only. Add
+`EXPOSE_TOOLS=all` to `.env` to keep exposing write tools.
 
 ## Documentation
 
@@ -54,7 +57,7 @@ DrayOS server (`npm run e2e:testing`, `EXPOSE_TOOLS=all`).
 - **Confirm gate** — single-use 60s intent bound to the command digest; human
   signs with a private key (`tools/approve.mjs`); MCP verifies `VIGOR_APPROVE_PUBKEY`.
 - **Dangerous writes** — additionally require `acknowledge: true` and return a
-  lockout warning (policy in `src/commands/write-policy.ts`).
+  lockout warning (policy in `src/commands/tool-policy.ts`).
 - **Auto-commit** — after a successful confirmed write, `sys commit` runs
   (`VIGOR_AUTO_COMMIT`; skipped for `skipCommit`). Outcome in
   `write_audit.commit_status`.
@@ -82,7 +85,7 @@ opencode ←stdio→ MCP server (Node 24 + TypeScript)
 | --- | --- |
 | `src/commands/registry/` | CLI catalog by family (`R` / `Ra` / `W`) + schema-generated SDK tools |
 | `src/commands/validators.ts` | Shared Zod arg schemas |
-| `src/commands/write-policy.ts` | Confirm tiers / `secretArgs` / `snapshotRead` / … |
+| `src/commands/tool-policy.ts` | Confirm tiers / secret fields / sensitive output / snapshots |
 | `src/commands/write-executor.ts` | Sign-gated confirm → snapshot → execute → commit → audit |
 | `src/commands/build.ts` | MCP tool registration |
 | `src/commands/read-allowlist.ts` | Registry-derived allowlist for `runCommand()` |
@@ -100,6 +103,13 @@ Every registry command becomes an MCP tool:
 - **Write tools (446)** — first call returns a redacted preview +
   `confirmation_id` / `sign_payload`; second call requires `signature`
   (and `acknowledge: true` for dual-tier tools).
+
+When a write includes secret fields, its preview uses named markers such as
+`<redacted:param>` and returns `redacted_fields`. Approving that intent prompts
+for each value with input hidden; the CLI signs only if the re-entered values
+rebuild the exact command digest. It refuses this flow without an interactive
+TTY. Raw payload signing is an explicit blind bypass:
+`node tools/approve.mjs --payload <file|-> --blind` prints a warning.
 
 | Tool | CLI (live-verified, fw 4.4.7_RC2) |
 | --- | --- |
@@ -134,8 +144,8 @@ ssh-keyscan -t rsa,ecdsa,ed25519 "$VIGOR_HOST" 2>/dev/null | ssh-keygen -lf - -E
 # Generate approve keys for writes:
 node tools/approve-keygen.mjs
 # → set VIGOR_APPROVE_PUBKEY from the printed value / public PEM
-# Recommended local surface:
-# EXPOSE_TOOLS=readonly
+# Default exposure is readonly; opt in to all 666 tools with:
+# EXPOSE_TOOLS=all
 chmod 600 .env
 npm install
 npm run build
@@ -168,7 +178,8 @@ Every router request is logged to `data/vigor3912s.db` (or `VIGOR_LOG_DB`, WAL):
 - `write_audit` — preview / executed / failed / expired / mismatch / denied,
   optional before/after snapshots, `commit_status`
 
-Passwords and configured `secretArgs` are redacted to `***`. Logging is
+Passwords and configured `secretArgs` are redacted to `***` in argument logs;
+secret command values use named placeholders in approval previews. Logging is
 best-effort and never blocks a router command.
 
 ```bash

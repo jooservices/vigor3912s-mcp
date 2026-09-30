@@ -103,10 +103,9 @@ export class SshClientTransport implements Transport {
   }
 
   async close(reason: string): Promise<void> {
-    // The SDK closes only the SSH session after a command timeout so the next
-    // exchange can reconnect without rebuilding the MCP client. Other close
-    // reasons (explicit disconnect and output-limit termination) are final.
-    if (reason !== 'execution_timeout') this.open = false;
+    // Only the MCP lifecycle closes this transport permanently. SDK command
+    // failures discard the SDK session, then the same transport can reconnect.
+    if (reason === 'mcp_disconnect') this.open = false;
     try {
       await this.ssh.disconnect();
     } catch {

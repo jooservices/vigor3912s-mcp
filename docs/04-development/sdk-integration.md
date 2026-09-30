@@ -88,7 +88,7 @@ Layer 2 — confirm tier (`auto` | `confirm` | `dual`):
 | `confirm` | Preview + single-use Ed25519 signature / human approval (default writes) |
 | `dual` | Confirm + `acknowledge: true` (lockout / reboot / WAN down, …) |
 
-Owned in `src/commands/write-policy.ts`. SDK `classification` stays metadata.
+Owned in `src/commands/tool-policy.ts`. SDK `classification` stays metadata.
 
 `src/commands/registry/**` remains the curated MCP tool surface (stable tool
 IDs, zod args, and SDK-derived render projections). Every SDK-backed tool uses

@@ -10,7 +10,7 @@ src/
     registry/         curated MCP tool catalog + schema-generated SDK coverage
     build.ts          catalog → MCP tool registration
     write-executor.ts confirm tier → execute → commit → audit
-    write-policy.ts   Layer 2 confirm tiers (auto/confirm/dual)
+    tool-policy.ts    Confirm tiers, secret fields, sensitive output, snapshots
   db/log.ts           SQLite logging (node:sqlite)
   ssh/
     client.ts         VigorClient policy façade contract
@@ -53,7 +53,7 @@ npm run e2e:testing  # CI E2E: simulated DrayOS server, all tools + writes
 ## Adding or changing a command
 
 Edit the matching family file under `src/commands/registry/families/` and
-`write-policy.ts` when confirm tier / secrets / snapshots change.
+`tool-policy.ts` when confirm tiers / secrets / sensitive output / snapshots change.
 
 Regenerate reference docs with `node tools/gen-commands.mjs` when the catalog
 changes.

@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
+import type { KeyObject } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { digestCommand, verifyApprovalSignature } from './approve-crypto.js';
+import { digestCommand, parseApprovePublicKey, verifyApprovalSignature } from './approve-crypto.js';
 
 export type ConfirmErrorCode =
   | 'invalid_token'
@@ -26,6 +27,7 @@ export interface WriteIntent {
   commandDigest: string;
   /** Human-readable preview with secrets redacted. */
   commandPreview: string;
+  redactedFields: string[];
   nonce: string;
   createdAt: number;
   expiresAt: number;
@@ -38,6 +40,7 @@ export interface PendingIntentView {
   toolId: string;
   commandDigest: string;
   commandPreview: string;
+  redactedFields: string[];
   nonce: string;
   createdAt: number;
   expiresAt: number;
@@ -63,14 +66,19 @@ export class ConfirmGate {
   /** Consumed confirmation ids kept until expiry for replay detection. */
   private used = new Map<string, number>();
   private chain: Promise<unknown> = Promise.resolve();
+  private readonly approvePublicKey?: KeyObject;
 
   constructor(
     ttlMs = 60000,
     private readonly maxPending = 100,
     private readonly pendingFile?: string,
-    private readonly approvePublicKey?: string,
+    approvePublicKey?: string | KeyObject,
   ) {
     this.ttlMsValue = ttlMs;
+    this.approvePublicKey =
+      typeof approvePublicKey === 'string'
+        ? parseApprovePublicKey(approvePublicKey)
+        : approvePublicKey;
   }
 
   get ttlMs(): number {
@@ -90,7 +98,7 @@ export class ConfirmGate {
     return run;
   }
 
-  create(toolId: string, command: string, commandPreview: string): CreateIntentResult {
+  create(toolId: string, command: string, commandPreview: string, redactedFields: string[] = []): CreateIntentResult {
     this.prune();
     if (this.intents.size >= this.maxPending) {
       throw new ConfirmError(
@@ -111,6 +119,7 @@ export class ConfirmGate {
       toolId,
       commandDigest,
       commandPreview,
+      redactedFields,
       nonce,
       createdAt: now,
       expiresAt,
@@ -176,6 +185,7 @@ export class ConfirmGate {
       toolId: i.toolId,
       commandDigest: i.commandDigest,
       commandPreview: i.commandPreview,
+      redactedFields: i.redactedFields,
       nonce: i.nonce,
       createdAt: i.createdAt,
       expiresAt: i.expiresAt,
@@ -195,7 +205,15 @@ export class ConfirmGate {
           typeof (i as PendingIntentView).commandPreview === 'string' &&
           typeof (i as PendingIntentView).nonce === 'string' &&
           typeof (i as PendingIntentView).expiresAt === 'number',
-      );
+      ).map((intent) => {
+        const view = intent as PendingIntentView;
+        return {
+          ...view,
+          redactedFields: Array.isArray(view.redactedFields)
+            ? view.redactedFields.filter((field): field is string => typeof field === 'string')
+            : [],
+        };
+      });
     } catch {
       return [];
     }
@@ -203,13 +221,21 @@ export class ConfirmGate {
 
   private persist(): void {
     if (!this.pendingFile) return;
+    const tempFile = `${this.pendingFile}.${process.pid}.tmp`;
     try {
       fs.mkdirSync(path.dirname(this.pendingFile), { recursive: true });
       const body = JSON.stringify(this.pendingViews(), null, 2) + '\n';
-      fs.writeFileSync(this.pendingFile, body, { mode: 0o600 });
-      fs.chmodSync(this.pendingFile, 0o600);
+      fs.writeFileSync(tempFile, body, { mode: 0o600 });
+      fs.chmodSync(tempFile, 0o600);
+      fs.renameSync(tempFile, this.pendingFile);
     } catch {
       /* best-effort */
+    } finally {
+      try {
+        fs.rmSync(tempFile, { force: true });
+      } catch {
+        /* best-effort */
+      }
     }
   }
 

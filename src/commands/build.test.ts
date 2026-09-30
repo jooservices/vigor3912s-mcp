@@ -2,13 +2,15 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildServer } from '../index.js';
+import { registerRead } from './build.js';
+import { LogStore } from '../db/log.js';
 import { FakeVigorClient } from '../test/fake-vigor-client.js';
 import {
   generateApproveKeyPair,
   publicKeyToConfigValue,
   signApproval,
 } from '../tools/approve-crypto.js';
-import { readCommands, writeCommands } from './registry/index.js';
+import { allCommands, readCommands, writeCommands } from './registry/index.js';
 
 const keys = generateApproveKeyPair();
 const approvePublicKey = publicKeyToConfigValue(keys.publicKeyPem);
@@ -23,7 +25,7 @@ function cfg(overrides: Record<string, unknown> = {}) {
     readOnly: false,
     autoCommit: false,
     approvePublicKey,
-    exposeTools: [],
+    exposeTools: { mode: 'all' as const },
     disabledTools: [],
     toolOutputLimit: 16000,
     sshInsecureSkipHostVerify: true,
@@ -74,6 +76,8 @@ function isError(res: unknown): boolean {
 afterEach(() => {
   FakeVigorClient.instances = [];
   FakeVigorClient.script = {};
+  FakeVigorClient.readSignal = undefined;
+  FakeVigorClient.readHook = undefined;
   vi.restoreAllMocks();
 });
 
@@ -98,6 +102,72 @@ describe('registry -> MCP tool generation', () => {
     const res = await mcp.callTool({ name: 'show_session', arguments: {} });
     expect(textOf(res)).toContain('Current Session Usage: 110');
     await server.close();
+  });
+
+  it('returns sensitive read output without persisting it', async () => {
+    const output = `radius-secret-${crypto.randomUUID()}`;
+    FakeVigorClient.script = { '': '', 'radius show': output };
+    const { mcp, server, store } = await startServer();
+    const res = await mcp.callTool({ name: 'radius_show', arguments: {} });
+    expect(textOf(res)).toContain(output);
+    expect(store.query<{ output: string | null }[]>(
+      "SELECT output FROM requests WHERE tool_id = 'radius_show'",
+    )).toEqual([{ output: null }]);
+    await server.close();
+  });
+
+  it('still stores unflagged read output truncated at 4000 characters', async () => {
+    const output = `read-${crypto.randomUUID()}-${'x'.repeat(5000)}`;
+    FakeVigorClient.script = { '': '', 'show session': output };
+    const { mcp, server, store } = await startServer();
+    const res = await mcp.callTool({ name: 'show_session', arguments: {} });
+    expect(textOf(res)).toContain(output);
+    const rows = store.query<{ output: string | null }[]>(
+      "SELECT output FROM requests WHERE tool_id = 'show_session'",
+    );
+    expect(rows[0]?.output).toBe(`${output.slice(0, 4000)}\n...[truncated]`);
+    await server.close();
+  });
+
+  it('passes MCP cancellation to the read client and logs the aborted request', async () => {
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    FakeVigorClient.readHook = async (_command, options) => new Promise((_resolve, reject) => {
+      const signal = options?.signal;
+      markStarted();
+      if (signal?.aborted) reject(new Error('aborted'));
+      else signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    });
+    const { mcp, server, store } = await startServer();
+    const controller = new AbortController();
+    const call = mcp.callTool({ name: 'show_session', arguments: {} }, undefined, { signal: controller.signal });
+    await started;
+    controller.abort();
+    await expect(call).rejects.toBeDefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(FakeVigorClient.readSignal?.aborted).toBe(true);
+    expect(store.query<{ outcome: string; error_msg: string | null }[]>(
+      "SELECT outcome, error_msg FROM requests WHERE tool_id = 'show_session'",
+    )).toEqual([expect.objectContaining({ outcome: 'error' })]);
+    await server.close();
+  });
+
+  it('logs a read render failure before returning the error', async () => {
+    let handler: ((args: Record<string, unknown>, extra: never) => Promise<unknown>) | undefined;
+    const server = { tool: (_id: string, _desc: string, _schema: unknown, callback: typeof handler) => {
+      handler = callback as typeof handler;
+    } };
+    const store = new LogStore(':memory:');
+    const client = new FakeVigorClient();
+    const command = { ...readCommands().find((item) => item.id === 'show_session')!, render: () => {
+      throw new Error('render failed');
+    } };
+    registerRead(server as never, client, store, command, 16000);
+    await expect(handler!({}, undefined as never)).rejects.toThrow('render failed');
+    expect(store.query<{ outcome: string; command: string }[]>(
+      "SELECT outcome, command FROM requests WHERE tool_id = 'show_session'",
+    )).toEqual([{ outcome: 'error', command: 'show_session' }]);
+    store.close();
   });
 
   it('passes validated args into the rendered read command (ip_ping)', async () => {
@@ -274,10 +344,50 @@ describe('registry -> MCP tool generation', () => {
     await server.close();
   });
 
+  it('registers 220 read tools by default and 666 tools with explicit all mode', async () => {
+    const read = await startServer(cfg({ exposeTools: { mode: 'list', ids: readCommands().map((cmd) => cmd.id) } }));
+    expect((await read.mcp.listTools()).tools).toHaveLength(220);
+    await read.server.close();
+
+    const all = await startServer(cfg({ exposeTools: { mode: 'all' } }));
+    expect((await all.mcp.listTools()).tools).toHaveLength(666);
+    expect(allCommands()).toHaveLength(666);
+    await all.server.close();
+  });
+
+  it('registers exactly an explicit tool id list', async () => {
+    const { mcp, server } = await startServer(
+      cfg({ exposeTools: { mode: 'list', ids: ['wan_status', 'sys_name'] } }),
+    );
+    expect((await mcp.listTools()).tools.map((tool) => tool.name).sort()).toEqual([
+      'sys_name',
+      'wan_status',
+    ]);
+    await server.close();
+  });
+
+  it('passes per-tool timeouts to the client', async () => {
+    const timeouts: number[] = [];
+    FakeVigorClient.readHook = async (_command, options) => {
+      timeouts.push(options?.timeoutMs ?? 0);
+      return 'ok';
+    };
+    const { mcp, server } = await startServer();
+    await mcp.callTool({ name: 'ip_tracert', arguments: { host: '8.8.8.8' } });
+    await mcp.callTool({ name: 'ip6_tracert', arguments: { host: '2001:4860:4860::8888' } });
+    await mcp.callTool({ name: 'sdk_ip_tracert', arguments: { targetIp: '8.8.8.8' } });
+    await mcp.callTool({ name: 'sdk_ip6_tracert', arguments: { target: '2001:4860:4860::8888' } });
+    await mcp.callTool({ name: 'sdk_ip_ping', arguments: { targetIp: '8.8.8.8' } });
+    await mcp.callTool({ name: 'sdk_ip6_ping', arguments: { target: '2001:4860:4860::8888' } });
+    await mcp.callTool({ name: 'wan_status', arguments: {} });
+    expect(timeouts).toEqual([60000, 60000, 60000, 60000, 60000, 60000, 15000]);
+    await server.close();
+  });
+
   it('exposeTools allowlist and disabledTools denylist filter registration', async () => {
     FakeVigorClient.script = { '': '' };
     const { mcp, server } = await startServer(
-      cfg({ exposeTools: ['show_session', 'wan_status'], disabledTools: ['wan_status'] }),
+      cfg({ exposeTools: { mode: 'list', ids: ['show_session', 'wan_status'] }, disabledTools: ['wan_status'] }),
     );
     const names = new Set((await mcp.listTools()).tools.map((t) => t.name));
     expect(names.has('show_session')).toBe(true);
