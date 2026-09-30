@@ -40,7 +40,7 @@ export const Ra = (
   ...(format ? { format } : {}),
 });
 
-/** Catalog-only write entry. Safety flags live in write-policy.ts. */
+/** Catalog-only write entry. Safety flags live in tool-policy.ts. */
 export const W = (
   id: string,
   family: string,

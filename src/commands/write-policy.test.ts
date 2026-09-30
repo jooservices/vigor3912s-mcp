@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { operationFor } from '../sdk/operation-index.js';
 import { allCommands, findCommand, readCommands, writeCommands } from './registry/index.js';
-import { applyWritePolicy, WRITE_POLICY, resolveConfirmTier } from './write-policy.js';
+import { applyToolPolicy, WRITE_POLICY, resolveConfirmTier } from './tool-policy.js';
 
 describe('WRITE_POLICY / ConfirmTier', () => {
   it('only references write tools that exist in the registry', () => {
@@ -19,7 +19,7 @@ describe('WRITE_POLICY / ConfirmTier', () => {
 
   it('derives dual confirmation from destructive SDK classification', () => {
     expect(operationFor('cli.fs.format')?.classification).toBe('destructive');
-    const cmd = applyWritePolicy({
+    const cmd = applyToolPolicy({
       id: 'test_curated_destructive',
       kind: 'write',
       sdk: { manifestId: 'cli.fs.format' },
@@ -29,7 +29,7 @@ describe('WRITE_POLICY / ConfirmTier', () => {
   });
 
   it('merges SDK-derived secret arguments with explicit write policy', () => {
-    const cmd = applyWritePolicy({
+    const cmd = applyToolPolicy({
       id: 'ip_bgp',
       kind: 'write',
       secretArgs: ['community'],
@@ -53,7 +53,7 @@ describe('WRITE_POLICY / ConfirmTier', () => {
     vi.resetModules();
     const [{ allCommands: reloadedCommands }, { WRITE_POLICY: reloadedPolicy }] = await Promise.all([
       import('./registry/index.js'),
-      import('./write-policy.js'),
+      import('./tool-policy.js'),
     ]);
 
     expect(snapshot(reloadedCommands())).toEqual(before);

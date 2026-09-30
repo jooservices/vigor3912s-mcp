@@ -154,7 +154,7 @@ export const WRITE_POLICY: Readonly<Record<string, WritePolicy>> = {
   portmaptime_flush: { affectsNetwork: true },
 };
 
-export function applyWritePolicy<T extends { id: string; kind: string }>(
+export function applyToolPolicy<T extends { id: string; kind: string }>(
   cmd: T,
 ): T & ResolvedToolPolicy {
   const kind = cmd.kind === 'write' ? 'write' : 'read';

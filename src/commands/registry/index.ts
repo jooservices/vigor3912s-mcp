@@ -1,5 +1,5 @@
 import { voidOperationForCommand } from '../../sdk/void-operation-index.js';
-import { applyWritePolicy } from '../write-policy.js';
+import { applyToolPolicy } from '../tool-policy.js';
 import type { CommandDef, FamilyDef } from './types.js';
 import { showFamily } from './families/show.js';
 import { sysFamily } from './families/sys.js';
@@ -129,7 +129,7 @@ export const REGISTRY: FamilyDef[] = [
 ];
 
 export function allCommands(): CommandDef[] {
-  return REGISTRY.flatMap((f) => f.commands).map(applyWritePolicy);
+  return REGISTRY.flatMap((f) => f.commands).map(applyToolPolicy);
 }
 
 export function readCommands(): CommandDef[] {

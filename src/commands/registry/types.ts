@@ -1,5 +1,5 @@
 import type { ZodRawShape } from 'zod';
-import type { ConfirmTier } from '../write-policy.js';
+import type { ConfirmTier } from '../tool-policy.js';
 
 export type CommandKind = 'read' | 'write';
 
@@ -30,7 +30,7 @@ export interface CommandDef {
   args: ZodRawShape;
   /**
    * MCP confirm tier (Layer 2). Reads resolve to `auto`; writes default
-   * `confirm` unless write-policy sets `dual` (or rarely `auto`).
+   * `confirm` unless tool-policy sets `dual` (or rarely `auto`).
    */
   confirm?: ConfirmTier;
   /** Whether this command changes network-affecting state (extra warning). */
