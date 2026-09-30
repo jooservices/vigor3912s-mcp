@@ -31,8 +31,6 @@ export interface WritePolicy {
 /** Resolved policy fields merged onto CommandDef. */
 export interface ResolvedToolPolicy {
   confirm: ConfirmTier;
-  /** Compatibility alias: true when confirm === 'dual'. */
-  dangerous: boolean;
   affectsNetwork?: boolean;
   secretArgs?: string[];
   snapshotRead?: string;
@@ -56,7 +54,7 @@ export function resolveConfirmTier(
  */
 const EXTRA_WRITE_POLICY: Record<string, WritePolicy> = {};
 
-/** Register policy for generated tools (e.g. sdk_void destructive). */
+/** Register policy for generated tools (e.g. sdk_generated destructive). */
 export function registerExtraWritePolicy(id: string, policy: WritePolicy): void {
   EXTRA_WRITE_POLICY[id] = policy;
 }
@@ -172,6 +170,5 @@ export function applyWritePolicy<T extends { id: string; kind: string }>(
     ...cmd,
     ...rest,
     confirm,
-    dangerous: confirm === 'dual',
   };
 }

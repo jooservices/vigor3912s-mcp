@@ -32,9 +32,10 @@ describe('sdk-generated family', () => {
   });
 
   it('renders a stable CLI for a void-classified generated tool', () => {
-    const generatedFamily = REGISTRY.find((f) => f.family === 'sdk_void');
+    const generatedFamily = REGISTRY.find((f) => f.family === 'sdk_generated');
     expect(generatedFamily).toBeDefined();
     expect(generatedFamily!.commands.length).toBeGreaterThan(0);
+    expect(generatedFamily!.commands.every((cmd) => cmd.family === 'sdk_generated')).toBe(true);
     const voidSample = generatedFamily!.commands.find(
       (c) => c.sdk && inputSchemaFor(c.sdk.manifestId) === null,
     );

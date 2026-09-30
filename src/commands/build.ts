@@ -3,6 +3,7 @@ import { z, type ZodRawShape } from 'zod';
 import { LogStore, redactArgs } from '../db/log.js';
 import type { VigorClient } from '../ssh/client.js';
 import type { ConfirmGate } from '../tools/confirm-gate.js';
+import { errCode, errMsg, iso, timingOf } from './tool-log.js';
 import type { CommandDef } from './registry/index.js';
 import { allCommands } from './registry/index.js';
 import { resolveSdkInput } from './sdk-invoke.js';
@@ -10,22 +11,6 @@ import { executeWrite } from './write-executor.js';
 
 function text(content: unknown): string {
   return JSON.stringify(content, null, 2);
-}
-
-const iso = (ms: number): string => new Date(ms).toISOString();
-
-function timingOf(client: VigorClient): {
-  sendAt?: string | null;
-  recvAt?: string | null;
-  connectMs?: number | null;
-} {
-  const t = client.lastCommandTiming;
-  if (!t) return { sendAt: null, recvAt: null, connectMs: null };
-  return { sendAt: iso(t.sendAt), recvAt: iso(t.recvAt), connectMs: t.connectMs };
-}
-
-function errCode(e: unknown): string | undefined {
-  return e instanceof Error && 'code' in e ? String((e as { code: unknown }).code) : undefined;
 }
 
 export interface RegisterOptions {
@@ -90,7 +75,7 @@ function registerRead(
         argsJson: redactArgs(args, cmd.secretArgs ?? []),
         outcome: 'error',
         errorCode: errCode(e),
-        errorMsg: e instanceof Error ? e.message : String(e),
+        errorMsg: errMsg(e),
         durationMs: ended - started,
         requestedAt: iso(started),
         respondedAt: iso(ended),

@@ -1,26 +1,12 @@
 import { LogStore, redactArgs, redactCommand } from '../db/log.js';
 import type { VigorClient } from '../ssh/client.js';
+import { buildSignPayload } from '../tools/approve-crypto.js';
 import { ConfirmError, type ConfirmGate } from '../tools/confirm-gate.js';
+import { errCode, errMsg, iso, timingOf } from './tool-log.js';
 import type { CommandDef } from './registry/index.js';
 import { findCommand } from './registry/index.js';
 import { isRouterCliFailure } from './router-cli-result.js';
 import { resolveSdkInput } from './sdk-invoke.js';
-
-const iso = (ms: number): string => new Date(ms).toISOString();
-
-function timingOf(client: VigorClient): {
-  sendAt?: string | null;
-  recvAt?: string | null;
-  connectMs?: number | null;
-} {
-  const t = client.lastCommandTiming;
-  if (!t) return { sendAt: null, recvAt: null, connectMs: null };
-  return { sendAt: iso(t.sendAt), recvAt: iso(t.recvAt), connectMs: t.connectMs };
-}
-
-function errCode(e: unknown): string | undefined {
-  return e instanceof Error && 'code' in e ? String((e as { code: unknown }).code) : undefined;
-}
 
 /** Map ConfirmGate error codes onto write_audit status values. */
 function auditDenyStatus(code: string): 'expired' | 'mismatch' | 'denied' {
@@ -68,14 +54,14 @@ async function runCommit(client: VigorClient, store: LogStore): Promise<'ok' | '
       argsJson: '{}',
       outcome: 'error',
       errorCode: errCode(e),
-      errorMsg: e instanceof Error ? e.message : String(e),
+      errorMsg: errMsg(e),
       durationMs: Date.now() - started,
     });
     return 'failed';
   }
 }
 
-function confirmMessage(commandLog: string, cmd: CommandDef): string {
+function confirmMessage(commandLog: string, cmd: CommandDef, ttlMs: number): string {
   const impact = cmd.affectsNetwork ? 'network-affecting' : 'configuration change';
   const danger =
     cmd.confirm === 'dual'
@@ -90,7 +76,7 @@ function confirmMessage(commandLog: string, cmd: CommandDef): string {
     '',
     `• Type: write / ${impact} / confirm=${cmd.confirm ?? 'confirm'}`,
     '• Sign the returned payload with your approve private key (`node tools/approve.mjs …`).',
-    '• The signature is single-use and bound to this exact command digest (expires in 60 seconds).',
+    `• The signature is single-use and bound to this exact command digest (expires in ${Math.round(ttlMs / 1000)} seconds).`,
     danger,
     '',
     'Reply is not enough — paste the signature into the next tool call as `signature`.',
@@ -123,9 +109,7 @@ async function executeWriteLocked(
   opts: ExecuteWriteOptions,
 ): Promise<Record<string, unknown>> {
   const { gate, store, autoCommit } = opts;
-  const { confirmation_id, signature, acknowledge, confirm_token, user_code, ...rest } = args;
-  void confirm_token;
-  void user_code;
+  const { confirmation_id, signature, acknowledge, ...rest } = args;
   const cid = typeof confirmation_id === 'string' ? confirmation_id : undefined;
   const sig = typeof signature === 'string' ? signature : undefined;
   const secretArgs = cmd.secretArgs ?? [];
@@ -133,7 +117,7 @@ async function executeWriteLocked(
   const commandLog = redactCommand(command, rest, secretArgs);
   const argsLog = redactArgs(rest, secretArgs);
   const started = Date.now();
-  const message = confirmMessage(commandLog, cmd);
+  const message = confirmMessage(commandLog, cmd, gate.ttlMs);
   // Writes never use `auto` as a confirm bypass (reads never reach here).
   const tier = cmd.confirm === 'auto' ? 'confirm' : (cmd.confirm ?? 'confirm');
 
@@ -164,7 +148,12 @@ async function executeWriteLocked(
       nonce: created.nonce,
       command_digest: created.commandDigest,
       expires_at: created.expiresAt,
-      sign_payload: `${created.confirmationId}\n${created.nonce}\n${created.commandDigest}\n${created.expiresAt}`,
+      sign_payload: buildSignPayload(
+        created.confirmationId,
+        created.nonce,
+        created.commandDigest,
+        created.expiresAt,
+      ).toString('utf8'),
       affects_network: cmd.affectsNetwork ?? false,
       confirm_tier: tier,
       dangerous: tier === 'dual',
@@ -215,7 +204,7 @@ async function executeWriteLocked(
       argsJson: argsLog,
       outcome: 'denied',
       errorCode: denyCode,
-      errorMsg: e instanceof Error ? e.message : String(e),
+      errorMsg: errMsg(e),
       durationMs: Date.now() - started,
     });
     store.writeAudit({
@@ -225,7 +214,7 @@ async function executeWriteLocked(
       status: auditDenyStatus(denyCode),
       success: null,
       errorCode: denyCode,
-      errorMsg: e instanceof Error ? e.message : String(e),
+      errorMsg: errMsg(e),
     });
     throw e;
   }
@@ -251,7 +240,7 @@ async function executeWriteLocked(
       argsJson: argsLog,
       outcome: 'error',
       errorCode: errCode(e),
-      errorMsg: e instanceof Error ? e.message : String(e),
+      errorMsg: errMsg(e),
       durationMs: ended - started,
       requestedAt: iso(started),
       respondedAt: iso(ended),
@@ -265,7 +254,7 @@ async function executeWriteLocked(
       success: false,
       beforeSnapshot: before ?? undefined,
       errorCode: errCode(e),
-      errorMsg: e instanceof Error ? e.message : String(e),
+      errorMsg: errMsg(e),
     });
     throw e;
   }

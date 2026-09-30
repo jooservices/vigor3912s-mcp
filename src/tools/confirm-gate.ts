@@ -8,8 +8,7 @@ export type ConfirmErrorCode =
   | 'token_used'
   | 'token_expired'
   | 'mismatch'
-  | 'bad_signature'
-  | 'rate_limited';
+  | 'bad_signature';
 
 export class ConfirmError extends Error {
   readonly code: ConfirmErrorCode;
@@ -60,16 +59,23 @@ export interface CreateIntentResult {
  */
 export class ConfirmGate {
   private intents = new Map<string, WriteIntent>();
+  private readonly ttlMsValue: number;
   /** Consumed confirmation ids kept until expiry for replay detection. */
   private used = new Map<string, number>();
   private chain: Promise<unknown> = Promise.resolve();
 
   constructor(
-    private readonly ttlMs = 60000,
+    ttlMs = 60000,
     private readonly maxPending = 100,
     private readonly pendingFile?: string,
     private readonly approvePublicKey?: string,
-  ) {}
+  ) {
+    this.ttlMsValue = ttlMs;
+  }
+
+  get ttlMs(): number {
+    return this.ttlMsValue;
+  }
 
   /**
    * Serialize write confirm→execute workflows so snapshot/write/commit
@@ -99,7 +105,7 @@ export class ConfirmGate {
     const now = Date.now();
     const nonce = randomBytes(16).toString('hex');
     const commandDigest = digestCommand(command);
-    const expiresAt = now + this.ttlMs;
+    const expiresAt = now + this.ttlMsValue;
     this.intents.set(confirmationId, {
       confirmationId,
       toolId,
@@ -159,7 +165,7 @@ export class ConfirmGate {
     }
     intent.used = true;
     this.intents.delete(confirmationId);
-    this.used.set(confirmationId, Date.now() + this.ttlMs);
+    this.used.set(confirmationId, Date.now() + this.ttlMsValue);
     this.persist();
   }
 

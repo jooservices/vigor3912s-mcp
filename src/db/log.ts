@@ -270,6 +270,3 @@ export class LogStore {
     this.db = null;
   }
 }
-
-/** A no-op store used when logging is disabled. */
-export const NULL_STORE = new LogStore(':memory:');

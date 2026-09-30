@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { LogStore } from '../db/log.js';
 import { FakeVigorClient } from '../test/fake-vigor-client.js';
 import {
+  buildSignPayload,
   generateApproveKeyPair,
   publicKeyToConfigValue,
   signApproval,
@@ -67,7 +68,6 @@ describe('executeWrite', () => {
     const cmd = {
       ...findCommand('sys_commit')!,
       confirm: 'auto' as const,
-      dangerous: false,
     };
     const body = await executeWrite(cmd, {}, client, { gate, store, autoCommit: false });
     expect(body.status).toBe('needs_confirmation');
@@ -86,8 +86,28 @@ describe('executeWrite', () => {
     expect(body.confirm_tier).toBe('confirm');
     expect(body.confirmation_id).toBeTruthy();
     expect(body.command_digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(body.sign_payload).toBe(
+      buildSignPayload(
+        String(body.confirmation_id),
+        String(body.nonce),
+        String(body.command_digest),
+        Number(body.expires_at),
+      ).toString('utf8'),
+    );
     expect(body.confirm_token).toBeUndefined();
     expect(client.written).toEqual([]);
+  });
+
+  it('reports the configured confirmation TTL in the preview message', async () => {
+    const { client } = setup();
+    const gate = new ConfirmGate(30_000, 100, undefined, pub);
+    const body = await executeWrite(findCommand('sys_name')!, { wan: 'wan1', name: 'R1' }, client, {
+      gate,
+      store,
+      autoCommit: false,
+    });
+
+    expect(body.message).toContain('30 seconds');
   });
 
   it('confirmed write with autoCommit runs sys commit', async () => {

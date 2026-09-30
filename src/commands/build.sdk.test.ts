@@ -1,6 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildServer } from '../index.js';
 import { FakeVigorClient } from '../test/fake-vigor-client.js';
@@ -9,6 +10,9 @@ import { findCommand } from './registry/index.js';
 
 const keys = generateApproveKeyPair();
 const approvePublicKey = publicKeyToConfigValue(keys.publicKeyPem);
+const packageVersion = JSON.parse(
+  readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+).version as string;
 
 function cfg(overrides: Record<string, unknown> = {}) {
   return {
@@ -71,6 +75,12 @@ afterEach(() => {
 });
 
 describe('SDK-backed tool wiring (T2a infrastructure)', () => {
+  it('reports the package version during MCP initialization', async () => {
+    const { mcp, server } = await startServer();
+    expect(mcp.getServerVersion()?.version).toBe(packageVersion);
+    await server.close();
+  });
+
   it('auto-linked curated zero-arg read tools carry a cmd.sdk binding', () => {
     const cmd = findCommand('sys_version');
     expect(cmd?.sdk?.manifestId).toBe('cli.sys.version');

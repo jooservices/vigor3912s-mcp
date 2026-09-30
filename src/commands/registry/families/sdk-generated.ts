@@ -65,7 +65,7 @@ export function buildSdkGeneratedFamily(curated: readonly FamilyDef[]): FamilyDe
     usedIds.add(id);
 
     const desc = `SDK ${op.manifestId} (${op.classification})`;
-    const cmd = S(id, 'sdk_void', op.manifestId, desc);
+    const cmd = S(id, 'sdk_generated', op.manifestId, desc);
     commands.push(cmd);
     if (op.classification === 'destructive') {
       registerExtraWritePolicy(id, { confirm: 'dual' });
@@ -73,7 +73,7 @@ export function buildSdkGeneratedFamily(curated: readonly FamilyDef[]): FamilyDe
   }
 
   return {
-    family: 'sdk_void',
+    family: 'sdk_generated',
     desc: 'Auto-registered SDK operations not already curated (schema-derived args).',
     commands,
   };

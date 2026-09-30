@@ -8,6 +8,7 @@ import { LogStore } from './db/log.js';
 import type { VigorClient } from './ssh/client.js';
 import { SdkVigorClient } from './ssh/sdk-vigor-client.js';
 import { ConfirmGate } from './tools/confirm-gate.js';
+import { SERVER_VERSION } from './version.js';
 
 export function buildServer(
   config: VigorConfig = loadConfig(),
@@ -22,7 +23,7 @@ export function buildServer(
   const pendingFile = path.join(path.dirname(config.logDb), 'pending-confirms.json');
   const gate = new ConfirmGate(60000, 100, pendingFile, config.approvePublicKey);
   const store = new LogStore(config.logDb);
-  const server = new McpServer({ name: 'vigor3912s-mcp', version: '1.0.0' });
+  const server = new McpServer({ name: 'vigor3912s-mcp', version: SERVER_VERSION });
   registerAllTools(server, client, {
     gate,
     store,
