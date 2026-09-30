@@ -380,7 +380,7 @@ describe('registry -> MCP tool generation', () => {
     await mcp.callTool({ name: 'sdk_ip_ping', arguments: { targetIp: '8.8.8.8' } });
     await mcp.callTool({ name: 'sdk_ip6_ping', arguments: { target: '2001:4860:4860::8888' } });
     await mcp.callTool({ name: 'wan_status', arguments: {} });
-    expect(timeouts).toEqual([60000, 60000, 60000, 60000, 60000, 60000, 15000]);
+    expect(timeouts).toEqual([60000, 60000, 60000, 60000, 60000, 60000, 20000]);
     await server.close();
   });
 
