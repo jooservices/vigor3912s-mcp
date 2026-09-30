@@ -1,5 +1,6 @@
 import { Vigor3912SClient } from '@jooservices/vigor3912s-sdk';
 import type { TypedOperation } from '@jooservices/vigor3912s-sdk/operations';
+import { isForbidden } from '../commands/forbidden.js';
 import { isAllowedReadCommand } from '../commands/read-allowlist.js';
 import type { VigorConfig } from '../config.js';
 import type { AnyOperation } from '../sdk/operation-index.js';
@@ -26,15 +27,6 @@ type ClientConfig = Pick<
   | 'sshHostFingerprint'
   | 'sshInsecureSkipHostVerify'
 >;
-
-const FORBIDDEN_EXACT = new Set(['sys cfg default', 'sys halt', 'mngt rmtcfg enable']);
-const FORBIDDEN_PREFIXES = ['linux clean', 'sys cfg default'];
-
-function isForbidden(command: string): boolean {
-  const c = command.trim();
-  if (FORBIDDEN_EXACT.has(c)) return true;
-  return FORBIDDEN_PREFIXES.some((p) => c.startsWith(p));
-}
 
 /**
  * MCP policy façade over the DrayOS SDK.
