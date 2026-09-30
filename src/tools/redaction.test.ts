@@ -13,7 +13,7 @@ describe('redaction', () => {
   });
 
   it('redacts secret args in the args JSON', () => {
-    const args = { wan: 1, password: 's3cret' };
+    const args = { wan: 1, password: randomBytes(16).toString('hex') };
     const out = JSON.parse(redactArgs(args, ['password']));
     expect(out.password).toBe('***');
     expect(out.wan).toBe(1);
