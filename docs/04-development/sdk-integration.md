@@ -1,5 +1,28 @@
 # SDK integration
 
+## Rebuild siblings
+
+The MCP package links the sibling packages from `../ssh-client` and
+`../vigor3912s-sdk`; build the pinned releases before installing or running
+MCP so each sibling's `dist/` matches its source:
+
+```bash
+cd projects/ssh-client && git checkout v1.2.0 && npm ci && npm run build
+cd ../vigor3912s-sdk && git checkout v2.0.0 && npm ci && npm run build
+cd ../vigor3912s-mcp && npm ci
+```
+
+To verify the ssh-client build output without changing `dist/`:
+
+```bash
+cd projects/ssh-client
+npx tsc -p tsconfig.json --outDir /tmp/ssh-client-dist
+diff -rq /tmp/ssh-client-dist dist | grep -v .map
+```
+
+No output from the final command means the generated JavaScript matches. The
+CI workflows default to the same sibling tags and verify package versions.
+
 End-state wire path:
 
 ```text
