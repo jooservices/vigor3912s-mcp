@@ -10,12 +10,12 @@
 MCP server (Model Context Protocol) for a DrayTek Vigor 3912S router (DrayOS)
 over SSH.
 
-Covers the **CLI command set as MCP tools** (302 tools / 43 families), driven by
+Covers the **CLI command set as MCP tools** (666 tools / 43 families), driven by
 `@jooservices/vigor3912s-sdk` + `@jooservices/ssh-client`:
 
-- **Read commands (150)** run freely when exposed — curated reads plus
-  auto-registered zero-arg SDK ops (`sdk_void`).
-- **Write commands (152)** require a two-step Ed25519 confirm gate (preview →
+- **Read commands (220)** run freely when exposed — curated reads plus
+  auto-registered SDK ops with a schema-derived arg surface (`sdk_void`).
+- **Write commands (446)** require a two-step Ed25519 confirm gate (preview →
   signed approval) before execution. Dual-tier writes also need
   `acknowledge: true`.
 
@@ -23,6 +23,11 @@ Covers the **CLI command set as MCP tools** (302 tools / 43 families), driven by
 
 `v1.0.0` — local stdio MCP server for trusted LAN use; hosted on
 [jooservices/vigor3912s-mcp](https://github.com/jooservices/vigor3912s-mcp).
+
+The current local integration uses 640 typed SDK operations: 663 tools are
+SDK-backed and three reviewed OD-1 compatibility tools remain raw. The SDK
+schema/operation branch is not released yet; CI must clone a remote SDK ref
+that contains `./schemas` before this integration is merge-ready.
 
 Local deployments should expose only read tools by default
 (`EXPOSE_TOOLS=readonly`). Write tools are exercised in CI against a simulated
@@ -41,10 +46,11 @@ DrayOS server (`npm run e2e:testing`, `EXPOSE_TOOLS=all`).
 
 - **SSH host-key pin** — set `VIGOR_SSH_HOST_FINGERPRINT` (required). Use
   `VIGOR_SSH_INSECURE_SKIP_VERIFY=true` only for tests / simulated DrayOS.
-- **Read tools** — unit tests (mocked transport) **and** read-only E2E
-  (`npm run e2e`); E2E never calls a write tool on a real router by default.
-- **Write tools** — unit tests with a mocked client; CI E2E against simulated
-  DrayOS only. A write executes only after Ed25519 signed approval.
+- **Read tools** — unit tests (mocked transport) and local real-router E2E
+  (`npm run e2e` with `EXPOSE_TOOLS=readonly`).
+- **Write tools** — unit tests with a mocked client; CI E2E exercises confirmed
+  writes only against the simulated DrayOS server (`npm run e2e:testing`).
+  A write executes only after Ed25519 signed approval.
 - **Confirm gate** — single-use 60s intent bound to the command digest; human
   signs with a private key (`tools/approve.mjs`); MCP verifies `VIGOR_APPROVE_PUBKEY`.
 - **Dangerous writes** — additionally require `acknowledge: true` and return a
@@ -74,7 +80,7 @@ opencode ←stdio→ MCP server (Node 24 + TypeScript)
 
 | Layer | Role |
 | --- | --- |
-| `src/commands/registry/` | CLI catalog by family (`R` / `Ra` / `W`) + `sdk_void` |
+| `src/commands/registry/` | CLI catalog by family (`R` / `Ra` / `W`) + schema-generated SDK tools |
 | `src/commands/validators.ts` | Shared Zod arg schemas |
 | `src/commands/write-policy.ts` | Confirm tiers / `secretArgs` / `snapshotRead` / … |
 | `src/commands/write-executor.ts` | Sign-gated confirm → snapshot → execute → commit → audit |
@@ -89,9 +95,9 @@ and an interactive shell only.
 
 Every registry command becomes an MCP tool:
 
-- **Read tools (150)** — run the CLI and return output (structured when a
+- **Read tools (220)** — run the CLI and return output (structured when a
   formatter exists). Formatters receive validated args (e.g. `ip_ping` target).
-- **Write tools (152)** — first call returns a redacted preview +
+- **Write tools (446)** — first call returns a redacted preview +
   `confirmation_id` / `sign_payload`; second call requires `signature`
   (and `acknowledge: true` for dual-tier tools).
 
@@ -174,7 +180,7 @@ sqlite3 data/vigor3912s.db "SELECT ts, tool_id, status, success FROM write_audit
 npm run lint        # tsc --noEmit
 npm test            # unit tests (mocked transport; no router)
 npm run e2e         # tools vs target in .env (use EXPOSE_TOOLS=readonly locally)
-npm run e2e:testing # full tool surface vs simulated DrayOS (CI)
+npm run e2e:testing # full tool surface + confirmed writes vs simulated DrayOS (CI)
 ```
 
 ## Security

@@ -64,6 +64,10 @@ The AI surface is controlled by **`EXPOSE_TOOLS`**:
 - `EXPOSE_TOOLS=all` (or unset) → all tools are registered.
 - A comma-separated list → only those tool ids.
 
+`npm run e2e` uses the local/real-router readonly mode. CI's
+`npm run e2e:testing` starts `fake-drayos` and explicitly exposes all tools,
+including confirmed writes; it never connects to a real router.
+
 `VIGOR_READ_ONLY=true` additionally refuses any write at the driver, even if a
 write tool is exposed.
 
