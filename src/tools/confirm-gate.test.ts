@@ -5,7 +5,7 @@ import {
   signApproval,
 } from './approve-crypto.js';
 import { ConfirmError, ConfirmGate } from './confirm-gate.js';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -87,6 +87,7 @@ describe('ConfirmGate (signed approval)', () => {
       expect(raw).toContain('sys passwd <redacted:old> <redacted:new>');
       expect(raw).toContain('"redactedFields": [\n      "old",\n      "new"\n    ]');
       expect(statSync(file).mode & 0o777).toBe(0o600);
+      expect(readdirSync(dir).filter((name) => name.endsWith('.tmp'))).toEqual([]);
       const loaded = ConfirmGate.loadPending(file);
       expect(loaded).toHaveLength(1);
       expect(loaded[0]?.commandPreview).toBe('sys passwd <redacted:old> <redacted:new>');

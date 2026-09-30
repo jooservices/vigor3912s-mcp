@@ -33,7 +33,7 @@ function isToolEnabled(cmd: CommandDef, opts: RegisterOptions): boolean {
   return true;
 }
 
-function registerRead(
+export function registerRead(
   server: McpServer,
   client: VigorClient,
   store: LogStore,
@@ -41,9 +41,10 @@ function registerRead(
   outputLimit: number,
 ): void {
   server.tool(cmd.id, `${cmd.desc} (read-only)`, cmd.args, async (args: Record<string, unknown>, extra) => {
-    const command = cmd.render(args);
+    let command = cmd.id;
     const started = Date.now();
     try {
+      command = cmd.render(args);
       const timeoutMs = cmd.id === 'ip_tracert' ? 60000 : 15000;
       const runOptions = { timeoutMs, ...(extra.signal ? { signal: extra.signal } : {}) };
       const raw = cmd.sdk

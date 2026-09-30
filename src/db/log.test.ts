@@ -2,6 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { LogStore } from './log.js';
 
 describe('LogStore', () => {
+  it('returns the id of an inserted request and null when insertion fails', () => {
+    const store = new LogStore(':memory:');
+    const id = store.request({
+      toolId: 'read', kind: 'read', command: 'read', argsJson: '{}', outcome: 'ok', durationMs: 1,
+    });
+    expect(id).toBeTypeOf('number');
+    store.close();
+    expect(store.request({
+      toolId: 'read', kind: 'read', command: 'read', argsJson: '{}', outcome: 'ok', durationMs: 1,
+    })).toBeNull();
+  });
+
   it('logs requests and write audits to an in-memory db', () => {
     const store = new LogStore(':memory:');
     store.request({
@@ -41,21 +53,6 @@ describe('LogStore', () => {
     expect(audits[1]?.status).toBe('executed');
     expect(audits[1]?.success).toBe(1);
     expect(audits[1]?.before_snapshot).toBe('BWAN1: Online');
-    store.close();
-  });
-
-  it('returns null lastRequestId when empty', () => {
-    const store = new LogStore(':memory:');
-    expect(store.lastRequestId).toBeNull();
-    store.request({
-      toolId: 'x',
-      kind: 'read',
-      command: 'x',
-      argsJson: '{}',
-      outcome: 'ok',
-      durationMs: 1,
-    });
-    expect(store.lastRequestId).toBeTypeOf('number');
     store.close();
   });
 

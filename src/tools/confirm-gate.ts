@@ -215,13 +215,21 @@ export class ConfirmGate {
 
   private persist(): void {
     if (!this.pendingFile) return;
+    const tempFile = `${this.pendingFile}.${process.pid}.tmp`;
     try {
       fs.mkdirSync(path.dirname(this.pendingFile), { recursive: true });
       const body = JSON.stringify(this.pendingViews(), null, 2) + '\n';
-      fs.writeFileSync(this.pendingFile, body, { mode: 0o600 });
-      fs.chmodSync(this.pendingFile, 0o600);
+      fs.writeFileSync(tempFile, body, { mode: 0o600 });
+      fs.chmodSync(tempFile, 0o600);
+      fs.renameSync(tempFile, this.pendingFile);
     } catch {
       /* best-effort */
+    } finally {
+      try {
+        fs.rmSync(tempFile, { force: true });
+      } catch {
+        /* best-effort */
+      }
     }
   }
 

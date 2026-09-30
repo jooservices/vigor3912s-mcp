@@ -310,7 +310,7 @@ async function executeWriteLocked(
   const ended = Date.now();
   const success = commitStatus !== 'failed';
   const storeOutput = secretArgs.length === 0 ? raw : undefined;
-  store.request({
+  const requestId = store.request({
     toolId: cmd.id,
     kind: 'write',
     command: commandLog,
@@ -324,9 +324,8 @@ async function executeWriteLocked(
     respondedAt: iso(ended),
     ...writeTiming,
   });
-  const row = store.lastRequestId;
   store.writeAudit({
-    requestId: row,
+    requestId,
     toolId: cmd.id,
     command: commandLog,
     status: success ? 'executed' : 'failed',

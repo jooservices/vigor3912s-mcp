@@ -147,10 +147,10 @@ export class LogStore {
     }
   }
 
-  logRequest(entry: LogEntry): void {
-    if (!this.db) return;
+  logRequest(entry: LogEntry): number | null {
+    if (!this.db) return null;
     try {
-      this.db
+      const result = this.db
         .prepare(
           `INSERT INTO requests (ts, tool_id, kind, command, args_json, outcome, error_code, error_msg, duration_ms, output, requested_at, responded_at, send_at, recv_at, connect_ms)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -172,8 +172,10 @@ export class LogStore {
           entry.recvAt ?? null,
           entry.connectMs ?? null,
         );
+      return Number(result.lastInsertRowid);
     } catch {
       /* best-effort */
+      return null;
     }
   }
 
@@ -204,24 +206,14 @@ export class LogStore {
   }
 
   /** Convenience wrapper for the common single-line request logging. */
-  request(args: Omit<LogEntry, 'ts'>): void {
+  request(args: Omit<LogEntry, 'ts'>): number | null {
     const now = isoNow();
-    this.logRequest({ ...args, ts: now, respondedAt: args.respondedAt ?? now, requestedAt: args.requestedAt ?? now });
+    return this.logRequest({ ...args, ts: now, respondedAt: args.respondedAt ?? now, requestedAt: args.requestedAt ?? now });
   }
 
   /** Convenience wrapper for write-audit logging. */
   writeAudit(args: Omit<WriteAuditEntry, 'ts'>): void {
     this.logWriteAudit({ ...args, ts: isoNow() });
-  }
-
-  get lastRequestId(): number | null {
-    if (!this.db) return null;
-    try {
-      const row = this.db.prepare('SELECT last_insert_rowid() AS id').get() as { id: number };
-      return row.id > 0 ? row.id : null;
-    } catch {
-      return null;
-    }
   }
 
   /**

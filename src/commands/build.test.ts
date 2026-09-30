@@ -2,6 +2,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildServer } from '../index.js';
+import { registerRead } from './build.js';
+import { LogStore } from '../db/log.js';
 import { FakeVigorClient } from '../test/fake-vigor-client.js';
 import {
   generateApproveKeyPair,
@@ -148,6 +150,24 @@ describe('registry -> MCP tool generation', () => {
       "SELECT outcome, error_msg FROM requests WHERE tool_id = 'show_session'",
     )).toEqual([expect.objectContaining({ outcome: 'error' })]);
     await server.close();
+  });
+
+  it('logs a read render failure before returning the error', async () => {
+    let handler: ((args: Record<string, unknown>, extra: never) => Promise<unknown>) | undefined;
+    const server = { tool: (_id: string, _desc: string, _schema: unknown, callback: typeof handler) => {
+      handler = callback as typeof handler;
+    } };
+    const store = new LogStore(':memory:');
+    const client = new FakeVigorClient();
+    const command = { ...readCommands().find((item) => item.id === 'show_session')!, render: () => {
+      throw new Error('render failed');
+    } };
+    registerRead(server as never, client, store, command, 16000);
+    await expect(handler!({}, undefined as never)).rejects.toThrow('render failed');
+    expect(store.query<{ outcome: string; command: string }[]>(
+      "SELECT outcome, command FROM requests WHERE tool_id = 'show_session'",
+    )).toEqual([{ outcome: 'error', command: 'show_session' }]);
+    store.close();
   });
 
   it('passes validated args into the rendered read command (ip_ping)', async () => {

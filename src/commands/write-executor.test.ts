@@ -204,6 +204,24 @@ describe('executeWrite', () => {
     )).toHaveLength(1);
   });
 
+  it('links the write audit to the exact insert id, or null when request logging fails', async () => {
+    const { client, gate } = setup();
+    const cmd = { ...findCommand('sys_name')!, sdk: undefined };
+    FakeVigorClient.script['sys name wan1 Router'] = 'updated';
+    const args = { wan: 'wan1', name: 'Router' };
+    const preview = await executeWrite(cmd, args, client, { gate, store, autoCommit: false });
+    const signature = signApproval(keys.privateKeyPem, String(preview.confirmation_id), String(preview.nonce),
+      String(preview.command_digest), Number(preview.expires_at));
+    const insert = vi.spyOn(store, 'request').mockReturnValueOnce(null);
+    await executeWrite(cmd, { ...args, confirmation_id: preview.confirmation_id, signature }, client, {
+      gate, store, autoCommit: false,
+    });
+    expect(insert).toHaveBeenCalledOnce();
+    expect(store.query<{ request_id: number | null }[]>(
+      "SELECT request_id FROM write_audit WHERE status = 'executed'",
+    )).toEqual([{ request_id: null }]);
+  });
+
   it('authorizes the exact validated input rendered in the preview', async () => {
     const { client, gate } = setup();
     const authorize = vi.spyOn(client, 'authorizeWrite');
