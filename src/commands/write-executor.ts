@@ -93,6 +93,11 @@ export interface ExecuteWriteOptions {
   gate: ConfirmGate;
   store: LogStore;
   autoCommit: boolean;
+  signal?: AbortSignal;
+}
+
+function throwIfCancelled(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw Object.assign(new Error('request cancelled before router execution'), { code: 'cancelled' });
 }
 
 /**
@@ -114,7 +119,7 @@ async function executeWriteLocked(
   client: VigorClient,
   opts: ExecuteWriteOptions,
 ): Promise<Record<string, unknown>> {
-  const { gate, store, autoCommit } = opts;
+  const { gate, store, autoCommit, signal } = opts;
   const { confirmation_id, signature, acknowledge, ...rest } = args;
   const started = Date.now();
   const secretArgs = cmd.secretArgs ?? [];
@@ -231,9 +236,10 @@ async function executeWriteLocked(
   }
 
   try {
+    throwIfCancelled(signal);
     gate.consumeSigned(cid, command, sig);
   } catch (e) {
-    const denyCode = errCode(e) ?? 'denied';
+    const denyCode = signal?.aborted ? 'cancelled' : (errCode(e) ?? 'denied');
     store.request({
       toolId: cmd.id,
       kind: 'write',
@@ -260,6 +266,7 @@ async function executeWriteLocked(
   const persistSnapshots = canPersistSnapshots(cmd);
   let raw: string;
   try {
+    throwIfCancelled(signal);
     client.authorizeWrite(command);
     raw = cmd.sdk
       ? await client.runWriteOperation(cmd.sdk.manifestId, sdkInput)
@@ -271,12 +278,13 @@ async function executeWriteLocked(
     }
   } catch (e) {
     const ended = Date.now();
+    const cancelled = errCode(e) === 'cancelled';
     store.request({
       toolId: cmd.id,
       kind: 'write',
       command: commandLog,
       argsJson: argsLog,
-      outcome: 'error',
+      outcome: cancelled ? 'denied' : 'error',
       errorCode: errCode(e),
       errorMsg: errMsg(e),
       durationMs: ended - started,
@@ -288,8 +296,8 @@ async function executeWriteLocked(
       requestId: null,
       toolId: cmd.id,
       command: commandLog,
-      status: 'failed',
-      success: false,
+      status: cancelled ? 'denied' : 'failed',
+      success: cancelled ? null : false,
       beforeSnapshot: persistSnapshots ? before ?? undefined : undefined,
       errorCode: errCode(e),
       errorMsg: errMsg(e),

@@ -40,14 +40,15 @@ function registerRead(
   cmd: CommandDef,
   outputLimit: number,
 ): void {
-  server.tool(cmd.id, `${cmd.desc} (read-only)`, cmd.args, async (args: Record<string, unknown>) => {
+  server.tool(cmd.id, `${cmd.desc} (read-only)`, cmd.args, async (args: Record<string, unknown>, extra) => {
     const command = cmd.render(args);
     const started = Date.now();
     try {
       const timeoutMs = cmd.id === 'ip_tracert' ? 60000 : 15000;
+      const runOptions = { timeoutMs, ...(extra.signal ? { signal: extra.signal } : {}) };
       const raw = cmd.sdk
-        ? await client.runOperation(cmd.sdk.manifestId, resolveSdkInput(cmd.sdk, args), { timeoutMs })
-        : await client.runCommand(command, { timeoutMs });
+        ? await client.runOperation(cmd.sdk.manifestId, resolveSdkInput(cmd.sdk, args), runOptions)
+        : await client.runCommand(command, runOptions);
       const ended = Date.now();
       store.request({
         toolId: cmd.id,
@@ -102,11 +103,12 @@ function registerWrite(
   };
   if (cmd.confirm === 'dual') schema.acknowledge = z.boolean().optional();
 
-  server.tool(cmd.id, `${cmd.desc} (write — requires signed approval)`, schema, async (args: Record<string, unknown>) => {
+  server.tool(cmd.id, `${cmd.desc} (write — requires signed approval)`, schema, async (args: Record<string, unknown>, extra) => {
     const body = await executeWrite(cmd, args, client, {
       gate,
       store,
       autoCommit,
+      signal: extra.signal,
     });
     return { content: [{ type: 'text' as const, text: text(body) }] };
   });

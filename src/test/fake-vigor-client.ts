@@ -19,6 +19,8 @@ function renderFrames(op: AnyOperation, input: unknown): readonly { readonly com
 export class FakeVigorClient implements VigorClient {
   static instances: FakeVigorClient[] = [];
   static script: Record<string, string | string[]> = {};
+  static readSignal: AbortSignal | undefined;
+  static readHook: ((command: string, options?: RunCommandOptions) => Promise<string>) | undefined;
 
   readonly written: string[] = [];
   private writeAuthorized: string | null = null;
@@ -42,12 +44,15 @@ export class FakeVigorClient implements VigorClient {
     /* no-op */
   }
 
-  async runCommand(command: string, _opts?: RunCommandOptions): Promise<string> {
+  async runCommand(command: string, opts?: RunCommandOptions): Promise<string> {
+    FakeVigorClient.readSignal = opts?.signal;
     if (this.closed) throw new VigorCommandError('closed', 'client is closed');
+    if (FakeVigorClient.readHook) return FakeVigorClient.readHook(command, opts);
     return this.exec(command);
   }
 
-  async runOperation(manifestId: string, input: unknown, _opts?: RunCommandOptions): Promise<string> {
+  async runOperation(manifestId: string, input: unknown, opts?: RunCommandOptions): Promise<string> {
+    FakeVigorClient.readSignal = opts?.signal;
     const op = operationFor(manifestId);
     if (!op) {
       throw new VigorCommandError('invalid', `unknown SDK operation and was refused: ${manifestId}`);
@@ -62,6 +67,7 @@ export class FakeVigorClient implements VigorClient {
       .map((f) => f.command)
       .join('\n');
     if (this.closed) throw new VigorCommandError('closed', 'client is closed');
+    if (FakeVigorClient.readHook) return FakeVigorClient.readHook(command, opts);
     return this.exec(command);
   }
 

@@ -74,6 +74,8 @@ function isError(res: unknown): boolean {
 afterEach(() => {
   FakeVigorClient.instances = [];
   FakeVigorClient.script = {};
+  FakeVigorClient.readSignal = undefined;
+  FakeVigorClient.readHook = undefined;
   vi.restoreAllMocks();
 });
 
@@ -122,6 +124,29 @@ describe('registry -> MCP tool generation', () => {
       "SELECT output FROM requests WHERE tool_id = 'show_session'",
     );
     expect(rows[0]?.output).toBe(`${output.slice(0, 4000)}\n...[truncated]`);
+    await server.close();
+  });
+
+  it('passes MCP cancellation to the read client and logs the aborted request', async () => {
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    FakeVigorClient.readHook = async (_command, options) => new Promise((_resolve, reject) => {
+      const signal = options?.signal;
+      markStarted();
+      if (signal?.aborted) reject(new Error('aborted'));
+      else signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    });
+    const { mcp, server, store } = await startServer();
+    const controller = new AbortController();
+    const call = mcp.callTool({ name: 'show_session', arguments: {} }, undefined, { signal: controller.signal });
+    await started;
+    controller.abort();
+    await expect(call).rejects.toBeDefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(FakeVigorClient.readSignal?.aborted).toBe(true);
+    expect(store.query<{ outcome: string; error_msg: string | null }[]>(
+      "SELECT outcome, error_msg FROM requests WHERE tool_id = 'show_session'",
+    )).toEqual([expect.objectContaining({ outcome: 'error' })]);
     await server.close();
   });
 
