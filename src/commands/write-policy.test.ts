@@ -73,6 +73,26 @@ describe('WRITE_POLICY / ConfirmTier', () => {
     expect(findCommand('vpn_setup')?.secretArgs).toEqual(['param']);
   });
 
+  it('redacts credentials from SDK-generated write tools', () => {
+    const expected: Record<string, string[]> = {
+      ddns_set: ['password'],
+      ddns_set_update: ['password'],
+      internet: ['password'],
+      ip6_internet: ['password'],
+      ip_bgp: ['key'],
+      mngt_certimport: ['password'],
+      radius_client_add: ['secret'],
+      service_login: ['password'],
+      sdk_linux_setlinuxip: ['password'],
+      sys_adminuser: ['password'],
+      user: ['param', 'userName'],
+      vpn_wg_keyset: ['privateKey'],
+    };
+    for (const [id, secretArgs] of Object.entries(expected)) {
+      expect(findCommand(id)?.secretArgs, id).toEqual(secretArgs);
+    }
+  });
+
   it('points snapshotRead at existing read tools', () => {
     for (const [id, policy] of Object.entries(WRITE_POLICY)) {
       if (!policy.snapshotRead) continue;

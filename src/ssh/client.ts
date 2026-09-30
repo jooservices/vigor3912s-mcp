@@ -10,6 +10,10 @@
  * - `runCommand` sends READ commands only (MCP allowlist).
  * - `runWriteCommand` executes only a command previously passed to
  *   `authorizeWrite` (single-shot).
+ * - `runOperation` invokes a typed SDK operation classified `read` only.
+ * - `runWriteOperation` invokes a typed SDK operation whose rendered CLI was
+ *   previously passed to `authorizeWrite` (single-shot, same semantics as
+ *   `runWriteCommand`).
  */
 
 export type VigorErrorCode =
@@ -50,10 +54,14 @@ export interface VigorClient {
   connect(): Promise<void>;
   /** Send a READ command and return its cleaned output. */
   runCommand(command: string, opts?: RunCommandOptions): Promise<string>;
+  /** Invoke a typed SDK READ operation and return its formatted output. */
+  runOperation(manifestId: string, input: unknown, opts?: RunCommandOptions): Promise<string>;
   /** Authorize a confirmed write command for its next execution. */
   authorizeWrite(command: string): void;
   /** Execute a previously authorized write command (single-shot). */
   runWriteCommand(command: string, opts?: RunCommandOptions): Promise<string>;
+  /** Invoke a previously authorized typed SDK write operation (single-shot). */
+  runWriteOperation(manifestId: string, input: unknown, opts?: RunCommandOptions): Promise<string>;
   /** Close the session. */
   disconnect(): Promise<void>;
   /** Timing of the most recent command. */

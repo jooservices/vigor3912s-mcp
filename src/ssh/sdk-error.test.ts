@@ -14,6 +14,7 @@ describe('mapSdkError', () => {
     [sdkErrorCodes.sessionClosed, 'closed'],
     [sdkErrorCodes.commandFramingRejected, 'invalid'],
     [sdkErrorCodes.outputLimitExceeded, 'invalid'],
+    [sdkErrorCodes.commandRejected, 'invalid'],
     [sdkErrorCodes.operationNotImplemented, 'connect'],
   ] as const)('maps Vigor3912SError %s to %s', (sdkCode, vigorCode) => {
     const err = new Vigor3912SError(sdkCode, `sdk:${sdkCode}`);

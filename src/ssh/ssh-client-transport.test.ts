@@ -49,6 +49,20 @@ describe('SshClientTransport', () => {
     });
   });
 
+  it('keeps the transport reusable after the SDK invalidates a timed-out session', async () => {
+    const transport = makeTransport();
+    await transport.close('execution_timeout');
+    expect(transport.isOpen).toBe(true);
+    FakeSshClient.script['sys version'] = 'reconnected';
+    await expect(
+      transport.send(
+        { command: 'sys version' } as never,
+        { commandTimeoutMs: 1000, maxOutputBytes: 1000 } as never,
+        new AbortController().signal,
+      ),
+    ).resolves.toMatchObject({ stdout: 'reconnected' });
+  });
+
   it('clears timing after a failed send', async () => {
     FakeSshClient.script['sys version'] = 'ok';
     const transport = makeTransport();

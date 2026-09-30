@@ -1,3 +1,4 @@
+import { voidOperationForCommand } from '../../sdk/void-operation-index.js';
 import { applyWritePolicy } from '../write-policy.js';
 import type { CommandDef, FamilyDef } from './types.js';
 import { showFamily } from './families/show.js';
@@ -42,7 +43,7 @@ import { ldapFamily } from './families/ldap.js';
 import { tacacsplusFamily } from './families/tacacsplus.js';
 import { portmaptimeFamily } from './families/portmaptime.js';
 import { swmFamily } from './families/swm.js';
-import { buildSdkVoidFamily } from './families/sdk-void.js';
+import { buildSdkGeneratedFamily } from './families/sdk-generated.js';
 
 export type { CommandDef, CommandKind, FamilyDef } from './types.js';
 
@@ -92,8 +93,40 @@ const CURATED_REGISTRY: FamilyDef[] = [
   swmFamily,
 ];
 
+/**
+ * Auto-link curated zero-arg tools whose rendered CLI matches a void SDK
+ * operation, so they execute via `sdk.invoke()` instead of raw `execute()`.
+ * Tool ids, args, and descriptions are unchanged — only `cmd.sdk` is added.
+ */
+const SDK_VOID_BINDING_EXCLUSIONS = new Set(['local8021x_show_local_cer']);
+
+function attachSdkVoidBindings(families: readonly FamilyDef[]): FamilyDef[] {
+  return families.map((family) => ({
+    ...family,
+    commands: family.commands.map((cmd) => {
+      if (cmd.sdk || SDK_VOID_BINDING_EXCLUSIONS.has(cmd.id) || Object.keys(cmd.args).length > 0) {
+        return cmd;
+      }
+      let cli: string;
+      try {
+        cli = cmd.render({});
+      } catch {
+        return cmd;
+      }
+      const op = voidOperationForCommand(cli);
+      if (!op) return cmd;
+      return { ...cmd, sdk: { manifestId: op.manifestId } };
+    }),
+  }));
+}
+
+const LINKED_CURATED_REGISTRY: FamilyDef[] = attachSdkVoidBindings(CURATED_REGISTRY);
+
 /** Full command registry: curated families + auto void SDK coverage. */
-export const REGISTRY: FamilyDef[] = [...CURATED_REGISTRY, buildSdkVoidFamily(CURATED_REGISTRY)];
+export const REGISTRY: FamilyDef[] = [
+  ...LINKED_CURATED_REGISTRY,
+  buildSdkGeneratedFamily(LINKED_CURATED_REGISTRY),
+];
 
 export function allCommands(): CommandDef[] {
   return REGISTRY.flatMap((f) => f.commands).map(applyWritePolicy);

@@ -10,7 +10,8 @@ export function mapSdkError(err: unknown): VigorCommandError {
         : err.code === sdkErrorCodes.sessionClosed
           ? 'closed'
           : err.code === sdkErrorCodes.commandFramingRejected ||
-              err.code === sdkErrorCodes.outputLimitExceeded
+              err.code === sdkErrorCodes.outputLimitExceeded ||
+              err.code === sdkErrorCodes.commandRejected
             ? 'invalid'
             : 'connect';
     return new VigorCommandError(code, err.message);

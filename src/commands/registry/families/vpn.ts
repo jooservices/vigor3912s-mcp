@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { R, W } from '../builders.js';
+import { S } from '../builders.js';
 import type { FamilyDef } from '../types.js';
 import { safeText } from '../../validators.js';
 
@@ -8,32 +8,37 @@ export const vpnFamily: FamilyDef = {
   family: 'vpn',
   desc: 'VPN configuration (mostly write).',
   commands: [
-    R('vpn_list', 'vpn', 'vpn list', 'VPN profile list'),
-    R('vpn_remote', 'vpn', 'vpn remote', 'Remote VPN users'),
-    R('vpn_graph', 'vpn', 'vpn graph', 'VPN graph status'),
-    W(
+    S('vpn_list', 'vpn', 'cli.vpn.list', 'VPN profile list'),
+    S('vpn_remote', 'vpn', 'cli.vpn.remote', 'Remote VPN users'),
+    S('vpn_graph', 'vpn', 'cli.vpn.graph', 'VPN graph status'),
+    S(
       'vpn_setup',
       'vpn',
-      (a) => `vpn setup ${a.index} ${String(a.param)}`,
-      {
-        index: z.number().int().min(1).max(128),
-        param: safeText(),
-      },
+      'cli.vpn.setup',
       'Configure a VPN profile (SDK cli.vpn.setup; param is trailing syntax)',
+      {
+        args: {
+          index: z.number().int().min(1).max(128),
+          param: safeText(),
+        },
+      },
     ),
-    W(
+    S(
       'vpn_ovpn',
       'vpn',
-      (a) => `vpn ovpn ${String(a.param)}`,
-      { param: safeText() },
+      'cli.vpn.ovpn',
       'OpenVPN configuration (SDK cli.vpn.ovpn; param is trailing syntax)',
+      { args: { param: safeText() } },
     ),
-    W(
+    S(
       'vpn_dial_out',
       'vpn',
-      (a) => `vpn dial_out ${String(a.param)}`,
-      { param: safeText() },
+      'cli.vpn.dialout',
       'VPN dial-out (SDK cli.vpn.dialout; param is trailing syntax)',
+      {
+        args: { param: safeText() },
+        toInput: (args) => ({ param: args.param }),
+      },
     ),
   ],
 };
