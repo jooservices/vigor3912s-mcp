@@ -1,13 +1,22 @@
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 describe('approve CLI', () => {
+  beforeAll(() => {
+    const build = spawnSync(process.execPath, ['node_modules/typescript/bin/tsc'], {
+      cwd: repo,
+      encoding: 'utf8',
+    });
+    if (build.status !== 0) throw new Error(`${build.stdout}\n${build.stderr}`);
+  });
+
   it('requires --blind when signing an arbitrary payload', () => {
     const result = spawnSync(process.execPath, ['tools/approve.mjs', '--payload', '-'], {
       cwd: repo,
@@ -40,4 +49,3 @@ describe('approve CLI', () => {
     }
   });
 });
-import { randomBytes } from 'node:crypto';
