@@ -20,6 +20,10 @@
 
 ## Write / confirm issues
 
+**The server stops responding after a large output**
+- The SDK closed the failed command session. The next tool call should create
+  a fresh session automatically. Narrow the query if the output limit repeats.
+
 **"confirmation … not found / used / expired" / invalid signature**
 - Approvals are single-use and expire after 60s. Request a new preview, sign
   promptly with `node tools/approve.mjs <confirmation_id>`, and re-call with

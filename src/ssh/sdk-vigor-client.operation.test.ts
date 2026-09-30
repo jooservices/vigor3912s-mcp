@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Transport } from '@jooservices/vigor3912s-sdk/transport';
 import { FakeSshClient, FakeSshClientError } from '../test/fake-ssh-client.js';
 import { SdkVigorClient } from './sdk-vigor-client.js';
 
@@ -28,6 +29,35 @@ afterEach(() => {
 });
 
 describe('SdkVigorClient.runOperation', () => {
+  it('creates a fresh SDK session after an output limit failure', async () => {
+    const transports: Array<{ transport: Transport; closeReasons: string[] }> = [];
+    let sends = 0;
+    const client = new SdkVigorClient(config(), () => {
+      const state = { open: true, closeReasons: [] as string[] };
+      const transport: Transport = {
+        get isOpen() { return state.open; },
+        async send(_frame, limits) {
+          sends += 1;
+          if (sends === 1) return { stdout: 'x'.repeat(limits.maxOutputBytes + 1), stderr: '' };
+          return { stdout: 'Router Model: Vigor3912S Version: 4.4.7_RC2 English', stderr: '' };
+        },
+        async close(reason) { state.closeReasons.push(reason); state.open = false; },
+      };
+      transports.push({ transport, closeReasons: state.closeReasons });
+      return transport;
+    });
+
+    await expect(client.runOperation('cli.sys.version', undefined)).rejects.toMatchObject({
+      code: 'invalid',
+      message: expect.stringContaining('narrow the query'),
+    });
+    expect(client.lastCommandTiming).toBeNull();
+    await expect(client.runOperation('cli.sys.version', undefined)).resolves.toContain('4.4.7_RC2');
+    expect(transports).toHaveLength(2);
+    expect(transports[0]?.closeReasons).toContain('mcp_reset');
+    expect(client.lastCommandTiming).toBeNull();
+  });
+
   it('invokes a read TypedOperation with the typed input and returns formatted output', async () => {
     FakeSshClient.script['sys version'] =
       'Router Model: Vigor3912S    Version: 4.4.7_RC2 r5704 English\n';
@@ -41,7 +71,7 @@ describe('SdkVigorClient.runOperation', () => {
     await expect(client.runOperation('cli.does.not.exist', undefined)).rejects.toMatchObject({
       code: 'invalid',
     });
-    expect(FakeSshClient.instances[0]?.written).toEqual([]);
+    expect(FakeSshClient.instances.flatMap((instance) => instance.written)).toEqual([]);
   });
 
   it('refuses a write-classified operation', async () => {
@@ -49,7 +79,7 @@ describe('SdkVigorClient.runOperation', () => {
     await expect(client.runOperation('cli.wan.disable', { wanInterface: 1 })).rejects.toMatchObject({
       code: 'invalid',
     });
-    expect(FakeSshClient.instances[0]?.written).toEqual([]);
+    expect(FakeSshClient.instances.flatMap((instance) => instance.written)).toEqual([]);
   });
 
   it('refuses a destructive-classified operation', async () => {
@@ -57,7 +87,7 @@ describe('SdkVigorClient.runOperation', () => {
     await expect(client.runOperation('cli.sys.cfg.default', undefined)).rejects.toMatchObject({
       code: 'invalid',
     });
-    expect(FakeSshClient.instances[0]?.written).toEqual([]);
+    expect(FakeSshClient.instances.flatMap((instance) => instance.written)).toEqual([]);
   });
 
   it('rejects after disconnect as closed', async () => {
@@ -73,7 +103,7 @@ describe('SdkVigorClient.runOperation', () => {
     await expect(client.runWriteOperation('cli.sys.version', undefined)).rejects.toMatchObject({
       code: 'invalid',
     });
-    expect(FakeSshClient.instances[0]?.written).toEqual([]);
+    expect(FakeSshClient.instances.flatMap((instance) => instance.written)).toEqual([]);
   });
 
   it('does not echo typed secrets in an unauthorized error', async () => {
@@ -87,7 +117,7 @@ describe('SdkVigorClient.runOperation', () => {
       code: 'unauthorized',
       message: 'write operation "cli.sys.passwd" was not confirmed and was refused',
     });
-    expect(FakeSshClient.instances[0]?.written).toEqual([]);
+    expect(FakeSshClient.instances.flatMap((instance) => instance.written)).toEqual([]);
   });
 
   it('maps a buildFrames failure (invalid typed input) through mapSdkError', async () => {
@@ -96,7 +126,7 @@ describe('SdkVigorClient.runOperation', () => {
     await expect(
       client.runOperation('cli.ip.ping', { targetIp: 'not-an-ip' }),
     ).rejects.toMatchObject({ code: 'connect' });
-    expect(FakeSshClient.instances[0]?.written).toEqual([]);
+    expect(FakeSshClient.instances.flatMap((instance) => instance.written)).toEqual([]);
   });
 
   it('maps an SDK invoke failure through mapSdkError', async () => {
@@ -153,7 +183,7 @@ describe('SdkVigorClient.runWriteOperation', () => {
     await expect(
       client.runWriteOperation('cli.wan.disable', { wanInterface: 1 }),
     ).rejects.toMatchObject({ code: 'unauthorized' });
-    expect(FakeSshClient.instances[0]?.written).toEqual([]);
+    expect(FakeSshClient.instances.flatMap((instance) => instance.written)).toEqual([]);
   });
 
   it('refuses a forbidden rendered frame even when authorized', async () => {
@@ -162,7 +192,7 @@ describe('SdkVigorClient.runWriteOperation', () => {
     await expect(client.runWriteOperation('cli.sys.cfg.default', undefined)).rejects.toMatchObject({
       code: 'invalid',
     });
-    expect(FakeSshClient.instances[0]?.written).toEqual([]);
+    expect(FakeSshClient.instances.flatMap((instance) => instance.written)).toEqual([]);
   });
 
   it('refuses an unknown manifestId', async () => {

@@ -30,7 +30,7 @@ function makeTransport(overrides: Record<string, unknown> = {}) {
 describe('SshClientTransport', () => {
   it('rejects send after close', async () => {
     const transport = makeTransport();
-    await transport.close('test');
+    await transport.close('mcp_disconnect');
     await expect(
       transport.send(
         { command: 'sys version' } as never,
@@ -42,7 +42,7 @@ describe('SshClientTransport', () => {
 
   it('rejects ensureConnected after close', async () => {
     const transport = makeTransport();
-    await transport.close('test');
+    await transport.close('mcp_disconnect');
     await expect(transport.ensureConnected()).rejects.toMatchObject({
       code: 'closed',
       message: 'transport is closed',
@@ -61,6 +61,18 @@ describe('SshClientTransport', () => {
         new AbortController().signal,
       ),
     ).resolves.toMatchObject({ stdout: 'reconnected' });
+  });
+
+  it('keeps the transport reusable after an aborted operation closes its session', async () => {
+    const transport = makeTransport();
+    await transport.close('aborted');
+    expect(transport.isOpen).toBe(true);
+    FakeSshClient.script['sys version'] = 'reconnected';
+    await expect(transport.send(
+      { command: 'sys version' } as never,
+      { commandTimeoutMs: 1000, maxOutputBytes: 1000 } as never,
+      new AbortController().signal,
+    )).resolves.toMatchObject({ stdout: 'reconnected' });
   });
 
   it('clears timing after a failed send', async () => {

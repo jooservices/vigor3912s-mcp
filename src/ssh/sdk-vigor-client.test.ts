@@ -28,8 +28,8 @@ afterEach(() => {
 });
 
 describe('SdkVigorClient', () => {
-  it('passes connection and host-key settings to the transport', () => {
-    new SdkVigorClient(config());
+  it('passes connection and host-key settings to the transport', async () => {
+    await new SdkVigorClient(config()).connect();
     expect(FakeSshClient.instances[0]?.options).toMatchObject({
       host: '192.168.1.1',
       port: 22,
@@ -40,8 +40,8 @@ describe('SdkVigorClient', () => {
     expect(FakeSshClient.instances[0]?.options).not.toHaveProperty('insecureSkipVerify');
   });
 
-  it('passes insecureSkipVerify when host verify is skipped', () => {
-    new SdkVigorClient(config({ sshInsecureSkipHostVerify: true }));
+  it('passes insecureSkipVerify when host verify is skipped', async () => {
+    await new SdkVigorClient(config({ sshInsecureSkipHostVerify: true })).connect();
     expect(FakeSshClient.instances[0]?.options).toMatchObject({
       insecureSkipVerify: true,
     });
@@ -65,7 +65,7 @@ describe('SdkVigorClient', () => {
     await expect(client.runCommand('show status && reboot')).rejects.toMatchObject({
       code: 'invalid',
     });
-    expect(FakeSshClient.instances[0]?.written).toEqual([]);
+    expect(FakeSshClient.instances.flatMap((instance) => instance.written)).toEqual([]);
   });
 
   it.each(['sys cfg default', 'sys halt', 'mngt rmtcfg enable', 'linux clean -w'])(
@@ -75,7 +75,7 @@ describe('SdkVigorClient', () => {
       await expect(client.runCommand(command)).rejects.toMatchObject({ code: 'invalid' });
       client.authorizeWrite(command);
       await expect(client.runWriteCommand(command)).rejects.toMatchObject({ code: 'invalid' });
-      expect(FakeSshClient.instances[0]?.written).toEqual([]);
+      expect(FakeSshClient.instances.flatMap((instance) => instance.written)).toEqual([]);
     },
   );
 
@@ -127,7 +127,7 @@ describe('SdkVigorClient', () => {
     await expect(client.runWriteCommand('wan disable WAN1')).rejects.toMatchObject({
       code: 'unauthorized',
     });
-    expect(FakeSshClient.instances[0]?.written).toEqual([]);
+    expect(FakeSshClient.instances.flatMap((instance) => instance.written)).toEqual([]);
   });
 
   it.each(['connect', 'auth', 'timeout', 'closed', 'invalid'] as const)(
