@@ -135,6 +135,18 @@ describe('SdkVigorClient.runWriteOperation', () => {
     ).rejects.toMatchObject({ code: 'unauthorized' });
   });
 
+  it('consumes authorization when the SDK invocation fails', async () => {
+    FakeSshClient.errors['wan disable WAN1'] = new FakeSshClientError('timeout', 'timed out');
+    const client = new SdkVigorClient(config());
+    client.authorizeWrite('wan disable WAN1');
+    await expect(client.runWriteOperation('cli.wan.disable', { wanInterface: 1 })).rejects.toMatchObject({
+      code: 'timeout',
+    });
+    await expect(client.runWriteOperation('cli.wan.disable', { wanInterface: 1 })).rejects.toMatchObject({
+      code: 'unauthorized',
+    });
+  });
+
   it('refuses in read-only mode even when authorized', async () => {
     const client = new SdkVigorClient(config({ readOnly: true }));
     client.authorizeWrite('wan disable WAN1');

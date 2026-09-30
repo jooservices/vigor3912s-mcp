@@ -45,7 +45,7 @@ function isForbidden(command: string): boolean {
 export class SdkVigorClient implements VigorClient {
   private readonly transport: SshClientTransport;
   private readonly sdk: Vigor3912SClient;
-  private writeAuthorized = new Set<string>();
+  private writeAuthorized: string | null = null;
   private closed = false;
 
   constructor(private readonly cfg: ClientConfig) {
@@ -81,10 +81,15 @@ export class SdkVigorClient implements VigorClient {
   }
 
   authorizeWrite(command: string): void {
-    this.writeAuthorized.add(command);
+    this.writeAuthorized = command;
   }
 
   async runWriteCommand(command: string, opts: RunCommandOptions = {}): Promise<string> {
+    const authorized = this.writeAuthorized === command;
+    this.writeAuthorized = null;
+    if (!authorized) {
+      throw new VigorCommandError('unauthorized', 'write command was not confirmed and was refused');
+    }
     if (isForbidden(command)) {
       throw new VigorCommandError('invalid', `command is forbidden and was refused: ${command}`);
     }
@@ -94,10 +99,6 @@ export class SdkVigorClient implements VigorClient {
         'read-only mode is enabled; write commands are refused',
       );
     }
-    if (!this.writeAuthorized.has(command)) {
-      throw new VigorCommandError('unauthorized', 'write command was not confirmed and was refused');
-    }
-    this.writeAuthorized.delete(command);
     if (this.closed) {
       throw new VigorCommandError('closed', 'client is closed');
     }
@@ -132,6 +133,8 @@ export class SdkVigorClient implements VigorClient {
     input: unknown,
     opts: RunCommandOptions = {},
   ): Promise<string> {
+    const authorizedCommand = this.writeAuthorized;
+    this.writeAuthorized = null;
     const op = operationFor(manifestId);
     if (!op) {
       throw new VigorCommandError('invalid', `unknown SDK operation and was refused: ${manifestId}`);
@@ -143,21 +146,20 @@ export class SdkVigorClient implements VigorClient {
       );
     }
     const frames = this.renderFrames(op, input);
-    this.refuseForbiddenFrames(frames);
     const rendered = frames.map((f) => f.command).join('\n');
+    if (authorizedCommand !== rendered) {
+      throw new VigorCommandError(
+        'unauthorized',
+        `write operation "${manifestId}" was not confirmed and was refused`,
+      );
+    }
+    this.refuseForbiddenFrames(frames);
     if (this.cfg.readOnly) {
       throw new VigorCommandError(
         'unauthorized',
         'read-only mode is enabled; write commands are refused',
       );
     }
-    if (!this.writeAuthorized.has(rendered)) {
-      throw new VigorCommandError(
-        'unauthorized',
-        `write operation "${manifestId}" was not confirmed and was refused`,
-      );
-    }
-    this.writeAuthorized.delete(rendered);
     if (this.closed) {
       throw new VigorCommandError('closed', 'client is closed');
     }

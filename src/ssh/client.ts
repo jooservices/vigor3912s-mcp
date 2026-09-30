@@ -56,7 +56,7 @@ export interface VigorClient {
   runCommand(command: string, opts?: RunCommandOptions): Promise<string>;
   /** Invoke a typed SDK READ operation and return its formatted output. */
   runOperation(manifestId: string, input: unknown, opts?: RunCommandOptions): Promise<string>;
-  /** Authorize a confirmed write command for its next execution. */
+  /** Authorize a confirmed write for one attempt; every attempt consumes authorization. */
   authorizeWrite(command: string): void;
   /** Execute a previously authorized write command (single-shot). */
   runWriteCommand(command: string, opts?: RunCommandOptions): Promise<string>;
