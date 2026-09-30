@@ -40,8 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   640 local SDK operations reachable, 663 SDK-backed tools, and three reviewed
   OD-1 raw compatibility tools. The count reflects the local, unreleased SDK
   schema/operation branch used by this integration.
-- Updated the MCP lockfile to `@jooservices/ssh-client` `1.1.0`; command-timeout
-  reconnect behavior is preserved through the transport adapter.
+- Updated the MCP lockfile to `@jooservices/ssh-client` `1.2.0` and
+  `@jooservices/vigor3912s-sdk` `2.0.0`; command-timeout reconnect behavior is
+  preserved through the transport adapter.
 - Local real-router E2E remains read-only; CI E2E runs the full tool surface,
   including confirmed writes, only against the simulated DrayOS server.
 
