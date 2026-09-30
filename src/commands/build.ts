@@ -56,7 +56,7 @@ function registerRead(
         argsJson: redactArgs(args, cmd.secretArgs ?? []),
         outcome: 'ok',
         durationMs: ended - started,
-        output: raw,
+        output: cmd.sensitiveOutput ? undefined : raw,
         requestedAt: iso(started),
         respondedAt: iso(ended),
         ...timingOf(client),

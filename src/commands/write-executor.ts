@@ -30,6 +30,11 @@ async function snapshot(client: VigorClient, snapshotRead: string | undefined): 
   }
 }
 
+function canPersistSnapshots(cmd: CommandDef): boolean {
+  if (!cmd.snapshotRead) return true;
+  return findCommand(cmd.snapshotRead)?.sensitiveOutput !== true;
+}
+
 async function runCommit(client: VigorClient, store: LogStore): Promise<'ok' | 'failed' | 'skipped'> {
   const started = Date.now();
   try {
@@ -252,6 +257,7 @@ async function executeWriteLocked(
   }
 
   const before = await snapshot(client, cmd.snapshotRead);
+  const persistSnapshots = canPersistSnapshots(cmd);
   let raw: string;
   try {
     client.authorizeWrite(command);
@@ -284,7 +290,7 @@ async function executeWriteLocked(
       command: commandLog,
       status: 'failed',
       success: false,
-      beforeSnapshot: before ?? undefined,
+      beforeSnapshot: persistSnapshots ? before ?? undefined : undefined,
       errorCode: errCode(e),
       errorMsg: errMsg(e),
     });
@@ -317,8 +323,8 @@ async function executeWriteLocked(
     command: commandLog,
     status: success ? 'executed' : 'failed',
     success,
-    beforeSnapshot: before ?? undefined,
-    afterSnapshot: after ?? undefined,
+    beforeSnapshot: persistSnapshots ? before ?? undefined : undefined,
+    afterSnapshot: persistSnapshots ? after ?? undefined : undefined,
     commitStatus,
     errorCode: success ? undefined : 'commit_failed',
     errorMsg: success ? undefined : 'sys commit failed after write',

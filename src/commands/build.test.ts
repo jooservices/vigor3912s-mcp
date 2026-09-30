@@ -100,6 +100,31 @@ describe('registry -> MCP tool generation', () => {
     await server.close();
   });
 
+  it('returns sensitive read output without persisting it', async () => {
+    const output = `radius-secret-${crypto.randomUUID()}`;
+    FakeVigorClient.script = { '': '', 'radius show': output };
+    const { mcp, server, store } = await startServer();
+    const res = await mcp.callTool({ name: 'radius_show', arguments: {} });
+    expect(textOf(res)).toContain(output);
+    expect(store.query<{ output: string | null }[]>(
+      "SELECT output FROM requests WHERE tool_id = 'radius_show'",
+    )).toEqual([{ output: null }]);
+    await server.close();
+  });
+
+  it('still stores unflagged read output truncated at 4000 characters', async () => {
+    const output = `read-${crypto.randomUUID()}-${'x'.repeat(5000)}`;
+    FakeVigorClient.script = { '': '', 'show session': output };
+    const { mcp, server, store } = await startServer();
+    const res = await mcp.callTool({ name: 'show_session', arguments: {} });
+    expect(textOf(res)).toContain(output);
+    const rows = store.query<{ output: string | null }[]>(
+      "SELECT output FROM requests WHERE tool_id = 'show_session'",
+    );
+    expect(rows[0]?.output).toBe(`${output.slice(0, 4000)}\n...[truncated]`);
+    await server.close();
+  });
+
   it('passes validated args into the rendered read command (ip_ping)', async () => {
     FakeVigorClient.script = {
       '': '',

@@ -148,6 +148,19 @@ describe('executeWrite', () => {
     expect(gate.pendingViews()).toHaveLength(0);
   });
 
+  it('does not persist snapshots from a sensitive read command', async () => {
+    const { client, gate } = setup();
+    FakeVigorClient.script['radius show'] = `radius secret ${randomBytes(12).toString('hex')}`;
+    FakeVigorClient.script['sys name wan1 Router'] = 'updated';
+    const cmd = { ...findCommand('sys_name')!, snapshotRead: 'radius_show' };
+    const result = await approve(gate, cmd, { wan: 'wan1', name: 'Router' }, client, false);
+    expect(result.before).toContain('radius secret');
+    expect(result.after).toContain('radius secret');
+    expect(store.query<{ before_snapshot: string | null; after_snapshot: string | null }[]>(
+      'SELECT before_snapshot, after_snapshot FROM write_audit WHERE status = \'executed\'',
+    )).toEqual([{ before_snapshot: null, after_snapshot: null }]);
+  });
+
   it('authorizes the exact validated input rendered in the preview', async () => {
     const { client, gate } = setup();
     const authorize = vi.spyOn(client, 'authorizeWrite');

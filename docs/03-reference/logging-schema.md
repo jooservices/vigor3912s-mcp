@@ -25,7 +25,7 @@ dependency).
 | `send_at` | TEXT | ISO8601 — when the CLI command was written to the shell |
 | `recv_at` | TEXT | ISO8601 — when the response prompt was received |
 | `connect_ms` | INTEGER | connect/reconnect time before the command (0 if idle) |
-| `output` | TEXT | output excerpt (truncated ~4 KB) |
+| `output` | TEXT | output excerpt (truncated ~4 KB); `NULL` for reads marked `sensitiveOutput` |
 
 Indexes: `ts`, `tool_id`.
 
@@ -48,6 +48,10 @@ Indexes: `ts`, `tool_id`.
 
 Index: `ts`.
 
+For a write whose `snapshotRead` tool is marked `sensitiveOutput`, both snapshot
+columns are `NULL`. The snapshots are still returned to the model as before;
+only database persistence is suppressed.
+
 ## Timing
 
 Two levels of timing are recorded (tool-level and router-level):
@@ -62,8 +66,11 @@ Two levels of timing are recorded (tool-level and router-level):
 
 ## Redaction
 
-Passwords and secret args (`sys_passwd` old/new, `internet_set` password) are
-replaced with `***` in both `command` and `args_json` before writing.
+Passwords and secret args (including SDK schema fields detected by name) are
+replaced with `***` in `args_json`; command previews use named
+`<redacted:FIELD>` placeholders. Read output flagged `sensitiveOutput` is
+returned to the caller but stored as `NULL`. The current read list is defined
+in `src/commands/tool-policy.ts`.
 
 ## Useful queries
 

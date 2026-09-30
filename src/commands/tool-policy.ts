@@ -30,6 +30,22 @@ export interface WritePolicy {
   skipCommit?: boolean;
 }
 
+export const READ_POLICY: Readonly<Record<string, { sensitiveOutput?: true }>> = {
+  ddns_show: { sensitiveOutput: true },
+  ddns_show_all: { sensitiveOutput: true },
+  radius_show: { sensitiveOutput: true },
+  radius_external_view: { sensitiveOutput: true },
+  radius_external_viewprofile: { sensitiveOutput: true },
+  ldap_view: { sensitiveOutput: true },
+  tacacsplus_view: { sensitiveOutput: true },
+  vpn_wg_show: { sensitiveOutput: true },
+  usb_user_list: { sensitiveOutput: true },
+  csm_appe_config: { sensitiveOutput: true },
+  ip_ospf_cfg_show: { sensitiveOutput: true },
+  mngt_rmtcfg_status: { sensitiveOutput: true },
+  sys_cfg_status: { sensitiveOutput: true },
+};
+
 /** Resolved policy fields merged onto CommandDef. */
 export interface ResolvedToolPolicy {
   confirm: ConfirmTier;
@@ -37,6 +53,7 @@ export interface ResolvedToolPolicy {
   secretArgs?: string[];
   snapshotRead?: string;
   skipCommit?: boolean;
+  sensitiveOutput?: boolean;
 }
 
 export function resolveConfirmTier(
@@ -159,6 +176,7 @@ export function applyToolPolicy<T extends { id: string; kind: string }>(
 ): T & ResolvedToolPolicy {
   const kind = cmd.kind === 'write' ? 'write' : 'read';
   const policy = kind === 'write' ? WRITE_POLICY[cmd.id] : undefined;
+  const readPolicy = kind === 'read' ? READ_POLICY[cmd.id] : undefined;
   const sdk = 'sdk' in cmd && cmd.sdk && typeof cmd.sdk === 'object' ? cmd.sdk : undefined;
   const manifestId = sdk && 'manifestId' in sdk && typeof sdk.manifestId === 'string'
     ? sdk.manifestId
@@ -173,6 +191,7 @@ export function applyToolPolicy<T extends { id: string; kind: string }>(
     ...cmd,
     ...rest,
     ...(secretArgs.length > 0 ? { secretArgs } : {}),
+    ...(readPolicy?.sensitiveOutput ? { sensitiveOutput: true } : {}),
     confirm,
   };
 }

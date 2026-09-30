@@ -25,7 +25,7 @@ SshClientTransport → @jooservices/ssh-client → DrayOS shell (`DrayTek> `)
 kind, zod args, render, optional output formatter. Curated families are
 hand-shaped; the generated SDK family adds every operation not already covered
 by a curated typed binding.
-Safety metadata lives in `src/commands/write-policy.ts` and is merged by
+Safety metadata lives in `src/commands/tool-policy.ts` and is merged by
 `allCommands()`.
 
 `src/commands/build.ts` registers one MCP tool per entry; write orchestration

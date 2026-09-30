@@ -1,9 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 import { operationFor } from '../sdk/operation-index.js';
 import { allCommands, findCommand, readCommands, writeCommands } from './registry/index.js';
-import { applyToolPolicy, WRITE_POLICY, resolveConfirmTier } from './tool-policy.js';
+import { applyToolPolicy, READ_POLICY, WRITE_POLICY, resolveConfirmTier } from './tool-policy.js';
 
 describe('WRITE_POLICY / ConfirmTier', () => {
+  it('marks the owner-approved sensitive read output list', () => {
+    const ids = [
+      'ddns_show', 'ddns_show_all', 'radius_show', 'radius_external_view',
+      'radius_external_viewprofile', 'ldap_view', 'tacacsplus_view', 'vpn_wg_show',
+      'usb_user_list', 'csm_appe_config', 'ip_ospf_cfg_show', 'mngt_rmtcfg_status', 'sys_cfg_status',
+    ];
+    const registeredReads = new Set(readCommands().map((command) => command.id));
+    expect(Object.keys(READ_POLICY).sort()).toEqual(ids.sort());
+    for (const id of ids) {
+      expect(registeredReads.has(id), `unknown sensitive read tool: ${id}`).toBe(true);
+      expect(readCommands().find((command) => command.id === id)?.sensitiveOutput).toBe(true);
+    }
+  });
+
   it('only references write tools that exist in the registry', () => {
     const ids = new Set(writeCommands().map((c) => c.id));
     for (const id of Object.keys(WRITE_POLICY)) {

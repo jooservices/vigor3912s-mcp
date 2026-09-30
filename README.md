@@ -54,7 +54,7 @@ DrayOS server (`npm run e2e:testing`, `EXPOSE_TOOLS=all`).
 - **Confirm gate** — single-use 60s intent bound to the command digest; human
   signs with a private key (`tools/approve.mjs`); MCP verifies `VIGOR_APPROVE_PUBKEY`.
 - **Dangerous writes** — additionally require `acknowledge: true` and return a
-  lockout warning (policy in `src/commands/write-policy.ts`).
+  lockout warning (policy in `src/commands/tool-policy.ts`).
 - **Auto-commit** — after a successful confirmed write, `sys commit` runs
   (`VIGOR_AUTO_COMMIT`; skipped for `skipCommit`). Outcome in
   `write_audit.commit_status`.
@@ -82,7 +82,7 @@ opencode ←stdio→ MCP server (Node 24 + TypeScript)
 | --- | --- |
 | `src/commands/registry/` | CLI catalog by family (`R` / `Ra` / `W`) + schema-generated SDK tools |
 | `src/commands/validators.ts` | Shared Zod arg schemas |
-| `src/commands/write-policy.ts` | Confirm tiers / `secretArgs` / `snapshotRead` / … |
+| `src/commands/tool-policy.ts` | Confirm tiers / secret fields / sensitive output / snapshots |
 | `src/commands/write-executor.ts` | Sign-gated confirm → snapshot → execute → commit → audit |
 | `src/commands/build.ts` | MCP tool registration |
 | `src/commands/read-allowlist.ts` | Registry-derived allowlist for `runCommand()` |

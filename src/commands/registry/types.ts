@@ -41,6 +41,8 @@ export interface CommandDef {
   snapshotRead?: string;
   /** Arg keys whose values must be redacted in logs (passwords, secrets). */
   secretArgs?: string[];
+  /** Router output can contain credentials or sensitive configuration; do not persist it. */
+  sensitiveOutput?: boolean;
   /** Do not auto-run `sys commit` after this write (e.g. reboot, test mail). */
   skipCommit?: boolean;
   /** When set, this tool executes via the SDK's typed `invoke()` instead of a raw string. */
