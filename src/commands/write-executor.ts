@@ -3,7 +3,7 @@ import type { VigorClient } from '../ssh/client.js';
 import { buildSignPayload } from '../tools/approve-crypto.js';
 import { ConfirmError, type ConfirmGate } from '../tools/confirm-gate.js';
 import { redactArgs, redactCommand } from '../tools/redaction.js';
-import { errCode, errMsg, iso, timingOf } from './tool-log.js';
+import { errCode, errMsg, iso, logWriteOutcome, timingOf } from './tool-log.js';
 import type { CommandDef } from './registry/index.js';
 import { findCommand } from './registry/index.js';
 import { isRouterCliFailure } from './router-cli-result.js';
@@ -119,239 +119,217 @@ async function executeWriteLocked(
   client: VigorClient,
   opts: ExecuteWriteOptions,
 ): Promise<Record<string, unknown>> {
-  const { gate, store, autoCommit, signal } = opts;
-  const { confirmation_id, signature, acknowledge, ...rest } = args;
   const started = Date.now();
-  const secretArgs = cmd.secretArgs ?? [];
-  const argsLog = redactArgs(rest, secretArgs);
-  let command: string;
-  let sdkInput: unknown;
-  let redacted: ReturnType<typeof redactCommand>;
+  const { confirmation_id, signature, acknowledge, ...rest } = args;
+  const argsLog = redactArgs(rest, cmd.secretArgs ?? []);
+  let prepared: PreparedWrite;
   try {
-    command = cmd.render(rest);
-    redacted = redactCommand(command, rest, secretArgs);
-    if (cmd.sdk) sdkInput = resolveSdkInput(cmd.sdk, rest);
-  } catch (e) {
-    const code = errCode(e) ?? 'invalid';
-    const message = errMsg(e);
-    store.request({
-      toolId: cmd.id,
-      kind: 'write',
-      command: cmd.id,
-      argsJson: argsLog,
-      outcome: 'denied',
-      errorCode: code,
-      errorMsg: message,
-      durationMs: Date.now() - started,
-    });
-    store.writeAudit({
-      requestId: null,
-      toolId: cmd.id,
-      command: cmd.id,
-      status: 'denied',
-      success: null,
-      errorCode: code,
-      errorMsg: message,
-    });
-    throw e;
+    prepared = prepareWrite(cmd, rest);
+  } catch (error) {
+    recordPreparationFailure(cmd, opts.store, argsLog, started, error);
+    throw error;
   }
   const cid = typeof confirmation_id === 'string' ? confirmation_id : undefined;
   const sig = typeof signature === 'string' ? signature : undefined;
-  const commandLog = redacted.preview;
-  const message = confirmMessage(commandLog, cmd, gate.ttlMs);
-  // Writes never use `auto` as a confirm bypass (reads never reach here).
-  const tier = cmd.confirm === 'auto' ? 'confirm' : (cmd.confirm ?? 'confirm');
+  const context: WriteContext = {
+    cmd, client, ...opts, started, argsLog, ...prepared, cid, sig, acknowledge,
+  };
+  const preview = previewWrite(context);
+  if (preview !== null) return preview;
+  verifyApproval(context);
+  return recordWrite(context, await performWrite(context));
+}
 
-  const hasConfirmation = cid !== undefined || sig !== undefined;
-  if (!hasConfirmation) {
-    const created = gate.create(cmd.id, command, commandLog, redacted.fields);
-    store.request({
-      toolId: cmd.id,
-      kind: 'write',
-      command: commandLog,
-      argsJson: argsLog,
-      outcome: 'needs_confirmation',
-      durationMs: Date.now() - started,
-      requestedAt: iso(started),
-      respondedAt: iso(Date.now()),
-    });
-    store.writeAudit({
-      requestId: null,
-      toolId: cmd.id,
-      command: commandLog,
-      status: 'preview',
-      success: null,
-    });
-    return {
-      status: 'needs_confirmation',
-      preview: commandLog,
-      redacted_fields: redacted.fields,
-      confirmation_id: created.confirmationId,
-      nonce: created.nonce,
-      command_digest: created.commandDigest,
-      expires_at: created.expiresAt,
-      sign_payload: buildSignPayload(
-        created.confirmationId,
-        created.nonce,
-        created.commandDigest,
-        created.expiresAt,
-      ).toString('utf8'),
-      affects_network: cmd.affectsNetwork ?? false,
-      confirm_tier: tier,
-      dangerous: tier === 'dual',
-      message,
-      note: 'Sign sign_payload with your approve key (tools/approve.mjs), then call again with confirmation_id + signature.',
-    };
-  }
+interface PreparedWrite {
+  command: string;
+  sdkInput: unknown;
+  commandLog: string;
+  redactedFields: string[];
+}
 
-  if (!cid || !sig) {
+interface WriteContext extends PreparedWrite, ExecuteWriteOptions {
+  cmd: CommandDef;
+  client: VigorClient;
+  started: number;
+  argsLog: string;
+  cid?: string;
+  sig?: string;
+  acknowledge: unknown;
+}
+
+interface PerformedWrite {
+  before: string | null;
+  after: string | null;
+  persistSnapshots: boolean;
+  raw: string;
+  writeTiming: ReturnType<typeof timingOf>;
+  commitStatus: 'ok' | 'failed' | 'skipped';
+}
+
+function prepareWrite(cmd: CommandDef, args: Record<string, unknown>): PreparedWrite {
+  const command = cmd.render(args);
+  const redacted = redactCommand(command, args, cmd.secretArgs ?? []);
+  return {
+    command,
+    commandLog: redacted.preview,
+    redactedFields: redacted.fields,
+    sdkInput: cmd.sdk ? resolveSdkInput(cmd.sdk, args) : undefined,
+  };
+}
+
+function recordPreparationFailure(
+  cmd: CommandDef,
+  store: LogStore,
+  argsLog: string,
+  started: number,
+  error: unknown,
+): void {
+  const code = errCode(error) ?? 'invalid';
+  const message = errMsg(error);
+  logWriteOutcome(store, {
+    toolId: cmd.id, kind: 'write', command: cmd.id, argsJson: argsLog,
+    outcome: 'denied', errorCode: code, errorMsg: message, durationMs: Date.now() - started,
+  }, {
+    toolId: cmd.id, command: cmd.id, status: 'denied', success: null,
+    errorCode: code, errorMsg: message,
+  });
+}
+
+function previewWrite(ctx: WriteContext): Record<string, unknown> | null {
+  if (ctx.cid !== undefined || ctx.sig !== undefined) return null;
+  const created = ctx.gate.create(ctx.cmd.id, ctx.command, ctx.commandLog, ctx.redactedFields);
+  const tier = ctx.cmd.confirm === 'auto' ? 'confirm' : (ctx.cmd.confirm ?? 'confirm');
+  const message = confirmMessage(ctx.commandLog, ctx.cmd, ctx.gate.ttlMs);
+  logWriteOutcome(ctx.store, {
+    toolId: ctx.cmd.id, kind: 'write', command: ctx.commandLog, argsJson: ctx.argsLog,
+    outcome: 'needs_confirmation', durationMs: Date.now() - ctx.started,
+    requestedAt: iso(ctx.started), respondedAt: iso(Date.now()),
+  }, {
+    toolId: ctx.cmd.id, command: ctx.commandLog, status: 'preview', success: null,
+  });
+  return {
+    status: 'needs_confirmation',
+    preview: ctx.commandLog,
+    redacted_fields: ctx.redactedFields,
+    confirmation_id: created.confirmationId,
+    nonce: created.nonce,
+    command_digest: created.commandDigest,
+    expires_at: created.expiresAt,
+    sign_payload: buildSignPayload(
+      created.confirmationId, created.nonce, created.commandDigest, created.expiresAt,
+    ).toString('utf8'),
+    affects_network: ctx.cmd.affectsNetwork ?? false,
+    confirm_tier: tier,
+    dangerous: tier === 'dual',
+    message,
+    note: 'Sign sign_payload with your approve key (tools/approve.mjs), then call again with confirmation_id + signature.',
+  };
+}
+
+function verifyApproval(ctx: WriteContext): void {
+  if (!ctx.cid || !ctx.sig) {
     throw new ConfirmError(
       'invalid_token',
       'approval requires confirmation_id and signature (Ed25519 over sign_payload)',
     );
   }
-
-  if (tier === 'dual' && acknowledge !== true) {
-    const msg = 'dual-confirm write requires acknowledge: true';
-    store.request({
-      toolId: cmd.id,
-      kind: 'write',
-      command: commandLog,
-      argsJson: argsLog,
-      outcome: 'denied',
-      errorCode: 'not_acknowledged',
-      errorMsg: msg,
-      durationMs: Date.now() - started,
+  const tier = ctx.cmd.confirm === 'auto' ? 'confirm' : (ctx.cmd.confirm ?? 'confirm');
+  if (tier === 'dual' && ctx.acknowledge !== true) {
+    const message = 'dual-confirm write requires acknowledge: true';
+    logWriteOutcome(ctx.store, {
+      toolId: ctx.cmd.id, kind: 'write', command: ctx.commandLog, argsJson: ctx.argsLog,
+      outcome: 'denied', errorCode: 'not_acknowledged', errorMsg: message,
+      durationMs: Date.now() - ctx.started,
+    }, {
+      toolId: ctx.cmd.id, command: ctx.commandLog, status: 'denied', success: null,
+      errorCode: 'not_acknowledged', errorMsg: message,
     });
-    store.writeAudit({
-      requestId: null,
-      toolId: cmd.id,
-      command: commandLog,
-      status: 'denied',
-      success: null,
-      errorCode: 'not_acknowledged',
-      errorMsg: msg,
-    });
-    throw new Error(msg);
+    throw new Error(message);
   }
-
   try {
-    throwIfCancelled(signal);
-    gate.consumeSigned(cid, command, sig);
-  } catch (e) {
-    const denyCode = signal?.aborted ? 'cancelled' : (errCode(e) ?? 'denied');
-    store.request({
-      toolId: cmd.id,
-      kind: 'write',
-      command: commandLog,
-      argsJson: argsLog,
-      outcome: 'denied',
-      errorCode: denyCode,
-      errorMsg: errMsg(e),
-      durationMs: Date.now() - started,
+    throwIfCancelled(ctx.signal);
+    ctx.gate.consumeSigned(ctx.cid, ctx.command, ctx.sig);
+  } catch (error) {
+    const code = ctx.signal?.aborted ? 'cancelled' : (errCode(error) ?? 'denied');
+    logWriteOutcome(ctx.store, {
+      toolId: ctx.cmd.id, kind: 'write', command: ctx.commandLog, argsJson: ctx.argsLog,
+      outcome: 'denied', errorCode: code, errorMsg: errMsg(error),
+      durationMs: Date.now() - ctx.started,
+    }, {
+      toolId: ctx.cmd.id, command: ctx.commandLog, status: auditDenyStatus(code), success: null,
+      errorCode: code, errorMsg: errMsg(error),
     });
-    store.writeAudit({
-      requestId: null,
-      toolId: cmd.id,
-      command: commandLog,
-      status: auditDenyStatus(denyCode),
-      success: null,
-      errorCode: denyCode,
-      errorMsg: errMsg(e),
-    });
-    throw e;
+    throw error;
   }
+}
 
-  const before = await snapshot(client, cmd.snapshotRead);
-  const persistSnapshots = canPersistSnapshots(cmd);
+async function performWrite(ctx: WriteContext): Promise<PerformedWrite> {
+  const before = await snapshot(ctx.client, ctx.cmd.snapshotRead);
+  const persistSnapshots = canPersistSnapshots(ctx.cmd);
   let raw: string;
   try {
-    throwIfCancelled(signal);
-    client.authorizeWrite(command);
-    raw = cmd.sdk
-      ? await client.runWriteOperation(cmd.sdk.manifestId, sdkInput)
-      : await client.runWriteCommand(command);
+    throwIfCancelled(ctx.signal);
+    ctx.client.authorizeWrite(ctx.command);
+    raw = ctx.cmd.sdk
+      ? await ctx.client.runWriteOperation(ctx.cmd.sdk.manifestId, ctx.sdkInput)
+      : await ctx.client.runWriteCommand(ctx.command);
     if (isRouterCliFailure(raw)) {
       throw Object.assign(new Error(`router rejected command: ${raw.trim().slice(0, 200)}`), {
         code: 'router_error',
       });
     }
-  } catch (e) {
+  } catch (error) {
     const ended = Date.now();
-    const cancelled = errCode(e) === 'cancelled';
-    store.request({
-      toolId: cmd.id,
-      kind: 'write',
-      command: commandLog,
-      argsJson: argsLog,
-      outcome: cancelled ? 'denied' : 'error',
-      errorCode: errCode(e),
-      errorMsg: errMsg(e),
-      durationMs: ended - started,
-      requestedAt: iso(started),
-      respondedAt: iso(ended),
-      ...timingOf(client),
-    });
-    store.writeAudit({
-      requestId: null,
-      toolId: cmd.id,
-      command: commandLog,
-      status: cancelled ? 'denied' : 'failed',
+    const cancelled = errCode(error) === 'cancelled';
+    logWriteOutcome(ctx.store, {
+      toolId: ctx.cmd.id, kind: 'write', command: ctx.commandLog, argsJson: ctx.argsLog,
+      outcome: cancelled ? 'denied' : 'error', errorCode: errCode(error), errorMsg: errMsg(error),
+      durationMs: ended - ctx.started, requestedAt: iso(ctx.started), respondedAt: iso(ended),
+      ...timingOf(ctx.client),
+    }, {
+      toolId: ctx.cmd.id, command: ctx.commandLog, status: cancelled ? 'denied' : 'failed',
       success: cancelled ? null : false,
       beforeSnapshot: persistSnapshots ? before ?? undefined : undefined,
-      errorCode: errCode(e),
-      errorMsg: errMsg(e),
+      errorCode: errCode(error), errorMsg: errMsg(error),
     });
-    throw e;
+    throw error;
   }
-  const writeTiming = timingOf(client);
-  const after = await snapshot(client, cmd.snapshotRead);
-  const commitStatus = autoCommit && !cmd.skipCommit ? await runCommit(client, store) : 'skipped';
+  const writeTiming = timingOf(ctx.client);
+  const after = await snapshot(ctx.client, ctx.cmd.snapshotRead);
+  const commitStatus = ctx.autoCommit && !ctx.cmd.skipCommit
+    ? await runCommit(ctx.client, ctx.store)
+    : 'skipped';
+  return { before, after, persistSnapshots, raw, writeTiming, commitStatus };
+}
+
+function recordWrite(ctx: WriteContext, result: PerformedWrite): Record<string, unknown> {
   const ended = Date.now();
-  const success = commitStatus !== 'failed';
-  const storeOutput = secretArgs.length === 0 ? raw : undefined;
-  const requestId = store.request({
-    toolId: cmd.id,
-    kind: 'write',
-    command: commandLog,
-    argsJson: argsLog,
-    outcome: success ? 'ok' : 'error',
-    errorCode: success ? undefined : 'commit_failed',
-    errorMsg: success ? undefined : 'sys commit failed after write',
-    durationMs: ended - started,
-    output: storeOutput,
-    requestedAt: iso(started),
-    respondedAt: iso(ended),
-    ...writeTiming,
-  });
-  store.writeAudit({
-    requestId,
-    toolId: cmd.id,
-    command: commandLog,
-    status: success ? 'executed' : 'failed',
+  const success = result.commitStatus !== 'failed';
+  logWriteOutcome(ctx.store, {
+    toolId: ctx.cmd.id, kind: 'write', command: ctx.commandLog, argsJson: ctx.argsLog,
+    outcome: success ? 'ok' : 'error', errorCode: success ? undefined : 'commit_failed',
+    errorMsg: success ? undefined : 'sys commit failed after write', durationMs: ended - ctx.started,
+    output: (ctx.cmd.secretArgs ?? []).length === 0 ? result.raw : undefined,
+    requestedAt: iso(ctx.started), respondedAt: iso(ended), ...result.writeTiming,
+  }, {
+    toolId: ctx.cmd.id, command: ctx.commandLog, status: success ? 'executed' : 'failed',
     success,
-    beforeSnapshot: persistSnapshots ? before ?? undefined : undefined,
-    afterSnapshot: persistSnapshots ? after ?? undefined : undefined,
-    commitStatus,
+    beforeSnapshot: result.persistSnapshots ? result.before ?? undefined : undefined,
+    afterSnapshot: result.persistSnapshots ? result.after ?? undefined : undefined,
+    commitStatus: result.commitStatus,
     errorCode: success ? undefined : 'commit_failed',
     errorMsg: success ? undefined : 'sys commit failed after write',
-  });
+  }, true);
   if (!success) {
     return {
-      status: 'commit_failed',
-      command: commandLog,
-      before: before ?? undefined,
-      after: after ?? undefined,
-      output: raw,
-      commit: commitStatus,
+      status: 'commit_failed', command: ctx.commandLog,
+      before: result.before ?? undefined, after: result.after ?? undefined,
+      output: result.raw, commit: result.commitStatus,
     };
   }
   return {
-    status: 'done',
-    command: commandLog,
-    before: before ?? undefined,
-    after: after ?? undefined,
-    output: raw,
-    commit: autoCommit ? commitStatus : 'skipped',
+    status: 'done', command: ctx.commandLog,
+    before: result.before ?? undefined, after: result.after ?? undefined,
+    output: result.raw, commit: ctx.autoCommit ? result.commitStatus : 'skipped',
   };
 }

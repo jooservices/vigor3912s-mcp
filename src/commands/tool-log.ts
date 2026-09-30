@@ -1,3 +1,4 @@
+import type { LogStore, LogEntry, WriteAuditEntry } from '../db/log.js';
 import type { VigorClient } from '../ssh/client.js';
 
 export const iso = (ms: number): string => new Date(ms).toISOString();
@@ -24,4 +25,15 @@ export function errCode(error: unknown): string | undefined {
 
 export function errMsg(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+export function logWriteOutcome(
+  store: LogStore,
+  request: Omit<LogEntry, 'ts'>,
+  audit: Omit<WriteAuditEntry, 'ts' | 'requestId'>,
+  linkRequest = false,
+): number | null {
+  const requestId = store.request(request);
+  store.writeAudit({ ...audit, requestId: linkRequest ? requestId : null });
+  return requestId;
 }
