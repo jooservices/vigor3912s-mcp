@@ -9,14 +9,14 @@
  *   read tools. A local user who explicitly exposes write tools (and points at
  *   a real server) opts in to testing those writes.
  * - GitHub Actions brings up a simulated DrayOS server (see
- *   `tools/e2e_fake_run.mjs`) and runs with `EXPOSE_TOOLS=all`.
- * - Write tools are executed only when this script has curated argument values
- *   for them (WRITE_ARGS); otherwise writes are preview-only.
+ *   `tools/e2e_testing_run.mjs`) and runs with `EXPOSE_TOOLS=all`.
+ * - Write tools are executed only against the simulated server; a local run
+ *   against a real router remains read-only by default.
  * - Already-verified read tools are skipped via recon-output/e2e-passed.json.
  *
  * Usage:
  *   EXPOSE_TOOLS=readonly npm run e2e        # local / real server (default)
- *   npm run e2e:fake                          # CI: simulated DrayOS server, all tools
+ *   npm run e2e:testing                       # CI: simulated DrayOS server, all tools
  */
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -29,27 +29,6 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const cwd = path.resolve(here, '..');
 const STATE_FILE = path.join(cwd, 'recon-output', 'e2e-passed.json');
 
-function loadApprovePrivateKey() {
-  const file =
-    process.env.VIGOR_APPROVE_PRIVKEY_FILE ?? path.join(cwd, 'data', 'keys', 'approve-private.pem');
-  if (!fs.existsSync(file)) {
-    throw new Error(
-      `Missing approve private key at ${file}. Run: node tools/approve-keygen.mjs && export VIGOR_APPROVE_PUBKEY=…`,
-    );
-  }
-  return fs.readFileSync(file, 'utf8');
-}
-
-function signPreview(body) {
-  return signApproval(
-    loadApprovePrivateKey(),
-    body.confirmation_id,
-    body.nonce,
-    body.command_digest,
-    body.expires_at,
-  );
-}
-
 const READ_ARGS = (id) => {
   if (['ip_ping', 'ip_tracert', 'ip6_ping', 'ip6_tracert'].includes(id)) return { host: '8.8.8.8' };
   if (id === 'sys_health') return { metric: 'cpu_usage' };
@@ -60,12 +39,18 @@ const READ_ARGS = (id) => {
   return {};
 };
 
-// Representative write tests executed against the fake server (E2E_FAKE=1).
+// Representative write tests executed only against the simulated server.
 const WRITE_ARGS = {
   wan_disable: { wan: 3 },
   wan_enable: { wan: 4 },
   dhcp_gateway: { lan: 1, gateway: '192.168.1.1' },
-  ip_route_add: { dest: '10.0.0.0', mask: '255.255.255.0', gw: '192.168.1.1' },
+  ip_route_add: {
+    dst: '10.0.0.0',
+    netmask: '255.255.255.0',
+    gateway: '192.168.1.1',
+    ifno: 3,
+    rtype: 'static',
+  },
   sys_name: { wan: 'wan1', name: 'TestRouter' },
   sys_tftpd: {},
   sys_alg: { enabled: 1 },
@@ -99,7 +84,7 @@ const WRITE_ARGS = {
   ipf_flowtrack_set: { action: 'refresh' },
   upnp_on: {},
   appqos_enable: { mode: 0 },
-  msubnet_switch: { onoff: 'on' },
+  msubnet_switch: { lanIndex: 2, enabled: true },
   vlan_on: {},
   vrrp_enable: { onOff: 'on' },
   csm_ucf: { action: 'show' },
@@ -129,6 +114,27 @@ const WRITE_ARGS = {
   hsportal_setup: { profile: 1, action: 'disable' },
   tacacsplus_set: { action: 'enable', enabled: false },
 };
+
+function loadApprovePrivateKey() {
+  const file =
+    process.env.VIGOR_APPROVE_PRIVKEY_FILE ?? path.join(cwd, 'data', 'keys', 'approve-private.pem');
+  if (!fs.existsSync(file)) {
+    throw new Error(
+      `Missing approve private key at ${file}. Run: node tools/approve-keygen.mjs && export VIGOR_APPROVE_PUBKEY=…`,
+    );
+  }
+  return fs.readFileSync(file, 'utf8');
+}
+
+function signPreview(body) {
+  return signApproval(
+    loadApprovePrivateKey(),
+    body.confirmation_id,
+    body.nonce,
+    body.command_digest,
+    body.expires_at,
+  );
+}
 
 function loadPassed() {
   try {
@@ -175,9 +181,8 @@ try {
     Object.keys(toolsById.get(id)?.inputSchema?.properties ?? {}).includes('signature'),
   );
   if (exposedWrites.length > 0) {
-    console.warn(`WARNING: ${exposedWrites.length} write tools are exposed — E2E will exercise confirmed writes against the target.`);
+    console.warn(`WARNING: ${exposedWrites.length} write tools are exposed — E2E will exercise confirmed writes against the simulated target.`);
   }
-
   for (const [id, tool] of toolsById) {
     const inputSchema = tool.inputSchema ?? {};
     // read = no signature in the schema; write = has signature.
@@ -196,12 +201,9 @@ try {
       continue;
     }
 
-    // Write tool: preview (never sends anything to the target).
     const args = id in WRITE_ARGS ? WRITE_ARGS[id] : {};
     const preview = await mcp.callTool({ name: id, arguments: args });
     if (isError(preview)) {
-      // The tool requires arguments we did not provide — expected for argful
-      // writes; the full flow is covered when the tool is in WRITE_ARGS.
       check(`write:${id}:preview`, !(id in WRITE_ARGS), '(requires args)');
       continue;
     }
@@ -213,8 +215,6 @@ try {
       body.preview.length > 0;
     check(`write:${id}:preview`, okPreview, body.preview ?? '(no preview)');
 
-    // Execute only when curated argument values are available (WRITE_ARGS);
-    // otherwise this write is preview-only.
     if (okPreview && id in WRITE_ARGS) {
       const ack = body.dangerous ? { acknowledge: true } : {};
       const done = await mcp.callTool({

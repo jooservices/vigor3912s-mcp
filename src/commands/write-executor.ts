@@ -4,6 +4,7 @@ import { ConfirmError, type ConfirmGate } from '../tools/confirm-gate.js';
 import type { CommandDef } from './registry/index.js';
 import { findCommand } from './registry/index.js';
 import { isRouterCliFailure } from './router-cli-result.js';
+import { resolveSdkInput } from './sdk-invoke.js';
 
 const iso = (ms: number): string => new Date(ms).toISOString();
 
@@ -33,6 +34,9 @@ async function snapshot(client: VigorClient, snapshotRead: string | undefined): 
   const cmd = findCommand(snapshotRead);
   if (!cmd || cmd.kind !== 'read') return null;
   try {
+    if (cmd.sdk) {
+      return await client.runOperation(cmd.sdk.manifestId, resolveSdkInput(cmd.sdk, {}));
+    }
     return await client.runCommand(cmd.render({}));
   } catch {
     return null;
@@ -230,7 +234,9 @@ async function executeWriteLocked(
   let raw: string;
   try {
     client.authorizeWrite(command);
-    raw = await client.runWriteCommand(command);
+    raw = cmd.sdk
+      ? await client.runWriteOperation(cmd.sdk.manifestId, resolveSdkInput(cmd.sdk, rest))
+      : await client.runWriteCommand(command);
     if (isRouterCliFailure(raw)) {
       throw Object.assign(new Error(`router rejected command: ${raw.trim().slice(0, 200)}`), {
         code: 'router_error',

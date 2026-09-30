@@ -6,6 +6,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Typed invoke everywhere, schema-driven**: `jsonSchemaToZod` now converts
+  any implemented SDK operation's input schema (not just top-level
+  `action`-discriminated `oneOf`) — auto-detects a common `const`
+  discriminator by any property name for object `oneOf`s, falls back to a
+  plain `z.union` when branches share no discriminator, and wraps a
+  non-object top-level shape (mixed literal/object `oneOf`, or a bare
+  scalar/array) under a single `input` arg for MCP tool args.
+- The `S(...)` command builder now derives a tool's `args`, `toInput`, and
+  `validate` from the SDK's published input schema
+  (`inputSchemaFor(manifestId)`) automatically; callers may still override
+  `args`/`toInput` (e.g. a curated legacy arg shape) and still get SDK
+  schema validation on the mapped input.
+- `families/sdk-generated.ts` (was `families/sdk-void.ts`) now registers a
+  tool for **every** implemented SDK operation not yet bound to a curated
+  tool's `cmd.sdk.manifestId` (previously only zero-arg/void operations).
+- All curated migration batches now execute through typed `invoke()` with
+  schema validation. The raw escape hatch is limited to the three reviewed
+  OD-1 compatibility tools.
+- `src/commands/registry/sdk-census.test.ts` — acceptance gate: every
+  implemented SDK operation is bound to a tool (or a reviewed, currently
+  empty, `SDK_TOOL_EXCLUSIONS`); every raw (non-SDK) tool is exactly the
+  reviewed `RAW_EXECUTE_ALLOWLIST` (three OD-1 compatibility tools); a sample
+  of generated tools' `full` zod schema accepts a valid
+  input and rejects an invalid one; read tools only bind to SDK
+  read-classified operations; destructive-classified tools are dual-confirm.
+
+### Changed
+
+- Tool surface: **666 tools / 43 families** (220 read + 446 write), with all
+  640 local SDK operations reachable, 663 SDK-backed tools, and three reviewed
+  OD-1 raw compatibility tools. The count reflects the local, unreleased SDK
+  schema/operation branch used by this integration.
+- Updated the MCP lockfile to `@jooservices/ssh-client` `1.2.0` and
+  `@jooservices/vigor3912s-sdk` `2.0.0`; command-timeout reconnect behavior is
+  preserved through the transport adapter.
+- Local real-router E2E remains read-only; CI E2E runs the full tool surface,
+  including confirmed writes, only against the simulated DrayOS server.
+
+### Security
+
+- Typed write execution rejects read-classified operations, keeps single-use
+  authorization, and redacts credentials from generated SDK-tool previews and
+  audit logs.
+
 ## [1.0.0] - 2026-09-15
 
 ### Added

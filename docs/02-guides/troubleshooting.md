@@ -60,8 +60,9 @@
 
 - Command output/syntax can change between firmware versions. This project was
   verified on **4.4.7_RC2**. If your router is on a different version, verify
-  with `?`, `<family> ?`, `<cmd> ?`, and re-run the read-only E2E
-  (`npm run e2e`).
+  with `?`, `<family> ?`, `<cmd> ?`, and re-run the local read-only E2E
+  (`npm run e2e`). Use `npm run e2e:testing` for the full tool/write path
+  against the simulated DrayOS server.
 
 ## Known limits
 
@@ -69,5 +70,5 @@
   not automate config backup.
 - Write-command argument syntax for some commands is best-effort (from recon +
   docs). The preview always shows the exact CLI before you confirm.
-- The E2E suite runs read tools against the real router only; write behavior is
-  covered by unit tests and the fake-DrayOS E2E.
+- The real-router E2E runs read tools only; write behavior is covered by unit
+  tests and the fake-DrayOS E2E, which may exercise confirmed writes.

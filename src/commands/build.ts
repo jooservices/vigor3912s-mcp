@@ -5,6 +5,7 @@ import type { VigorClient } from '../ssh/client.js';
 import type { ConfirmGate } from '../tools/confirm-gate.js';
 import type { CommandDef } from './registry/index.js';
 import { allCommands } from './registry/index.js';
+import { resolveSdkInput } from './sdk-invoke.js';
 import { executeWrite } from './write-executor.js';
 
 function text(content: unknown): string {
@@ -57,7 +58,10 @@ function registerRead(
     const command = cmd.render(args);
     const started = Date.now();
     try {
-      const raw = await client.runCommand(command, { timeoutMs: cmd.id === 'ip_tracert' ? 60000 : 15000 });
+      const timeoutMs = cmd.id === 'ip_tracert' ? 60000 : 15000;
+      const raw = cmd.sdk
+        ? await client.runOperation(cmd.sdk.manifestId, resolveSdkInput(cmd.sdk, args), { timeoutMs })
+        : await client.runCommand(command, { timeoutMs });
       const ended = Date.now();
       store.request({
         toolId: cmd.id,

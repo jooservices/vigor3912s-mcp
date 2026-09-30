@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Ra, W } from '../builders.js';
+import { S } from '../builders.js';
 import type { FamilyDef } from '../types.js';
 import { safeText } from '../../validators.js';
 
@@ -9,28 +9,27 @@ export const haFamily: FamilyDef = {
   family: 'ha',
   desc: 'High availability.',
   commands: [
-    Ra(
+    S(
       'ha_show',
       'ha',
-      (a) => `ha show ${a.section === 'configSync' ? '-c' : '-g'}`,
-      { section: z.enum(['configSync', 'generalSetup']) },
+      'cli.ha.show',
       'HA configuration (section: configSync=-c, generalSetup=-g)',
+      { args: { section: z.enum(['configSync', 'generalSetup']) } },
     ),
-    Ra(
+    S(
       'ha_status',
       'ha',
-      (a) => `ha status ${a.scope === 'allRouters' ? '-a' : '-m'} ${String(a.detailLevel)}`,
-      {
-        scope: z.enum(['allRouters', 'localRouter']),
-        detailLevel: z.union([z.literal(0), z.literal(1), z.literal(2)]),
-      },
+      'cli.ha.status',
       'HA status (-a all routers / -m local; detailLevel 0|1|2)',
-    ),
-    W(
-      'ha_set',
-      'ha',
-      (a) => `ha set ${(a.args as string[]).join(' ')}`,
       {
+        args: {
+          scope: z.enum(['allRouters', 'localRouter']),
+          detailLevel: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+        },
+      },
+    ),
+    S('ha_set', 'ha', 'cli.ha.set', 'Configure HA (flag args, e.g. ["-e","1"])', {
+      args: {
         args: z
           .array(
             safeText().refine((token) => !/\s/.test(token), {
@@ -44,7 +43,6 @@ export const haFamily: FamilyDef = {
             { message: `ha set flags must be one of ${haSetFlags.join(' ')}` },
           ),
       },
-      'Configure HA (flag args, e.g. ["-e","1"])',
-    ),
+    }),
   ],
 };

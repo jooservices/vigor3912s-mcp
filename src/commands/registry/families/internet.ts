@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { R, W } from '../builders.js';
+import { S } from '../builders.js';
 import type { FamilyDef } from '../types.js';
 import { noControl, safeText, wanIdx } from '../../validators.js';
 
@@ -7,25 +7,29 @@ export const internetFamily: FamilyDef = {
   family: 'internet',
   desc: 'Internet access profile (WAN setup).',
   commands: [
-    R('internet_view', 'internet', 'internet -V', 'View Internet access profile'),
-    W(
-      'internet_set',
-      'internet',
-      (a) => {
-        let cmd = `internet -W ${a.wan} -M ${a.mode}`;
-        if (a.ispName) cmd += ` -S ${String(a.ispName)}`;
-        if (a.username) cmd += ` -u ${String(a.username)}`;
-        if (a.password) cmd += ` -p ${String(a.password)}`;
-        return cmd;
-      },
-      {
-        wan: wanIdx,
-        mode: z.number().int().min(0).max(7),
-        ispName: safeText(23).optional(),
-        username: noControl(49).optional(),
-        password: noControl(49).optional(),
-      },
-      'Set WAN internet access (mode required; optional ISP display name -S, user, password)',
-    ),
+    S('internet_view', 'internet', 'cli.internet.v', 'View Internet access profile'),
+    S(
+        'internet_set',
+        'internet',
+        'cli.internet',
+        'Set WAN internet access (mode required; optional ISP display name -S, user, password)',
+        {
+          args: {
+            wan: wanIdx,
+            mode: z.number().int().min(0).max(7),
+            ispName: safeText(23).optional(),
+            username: noControl(49).optional(),
+            password: noControl(49).optional(),
+          },
+          toInput: (a) => ({
+            wanInterface: a.wan,
+            mode: a.mode,
+            ...(a.ispName != null ? { ispName: a.ispName } : {}),
+            ...(a.username != null ? { username: a.username } : {}),
+            ...(a.password != null ? { password: a.password } : {}),
+          }),
+          partial: true,
+        },
+      ),
   ],
 };

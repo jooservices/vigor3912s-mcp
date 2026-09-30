@@ -18,6 +18,7 @@ by dedicated/e2e flows). Human-confirm / signed-approval deny coverage is covere
 | Track | Command | Target |
 | --- | --- | --- |
 | Real router (readonly) | `npm run e2e` with `.env` + `EXPOSE_TOOLS=readonly` | Live 3912S — **manual / later** |
-| CI / fake full | `npm run e2e:testing` | `fake-drayos` + all tools |
+| CI / fake full | `npm run e2e:testing` | `fake-drayos` + all tools, including confirmed writes |
 
-Never commit real credentials. CI uses the fake server only.
+Never commit real credentials. The real-router track is readonly; CI uses the
+fake server only and is the only E2E track that exercises writes.

@@ -13,16 +13,18 @@ Tool layer (src/commands/build.ts)
   ▼
 SdkVigorClient (src/ssh/sdk-vigor-client.ts)
   │  allowlist / blocklist / authorizeWrite
-  │  invoke() for mapped zero-arg SDK ops, else execute()
+  │  invoke() for every SDK-backed operation; raw execute() only for 3 reviewed gaps
   ▼
 SshClientTransport → @jooservices/ssh-client → DrayOS shell (`DrayTek> `)
 ```
 
 ## Command registry → tools
 
-`src/commands/registry/` is the **CLI catalog** (302 tools / 43 families):
+`src/commands/registry/` is the **CLI catalog** (666 tools / 43 families;
+220 read / 446 write):
 kind, zod args, render, optional output formatter. Curated families are
-hand-shaped; `sdk_void` auto-adds remaining zero-arg SDK TypedOperations.
+hand-shaped; the generated SDK family adds every operation not already covered
+by a curated typed binding.
 Safety metadata lives in `src/commands/write-policy.ts` and is merged by
 `allCommands()`.
 
@@ -45,9 +47,11 @@ on. The production implementation is `SdkVigorClient`, which wraps
 ```ts
 interface VigorClient {
   connect(): Promise<void>;
-  runCommand(cmd: string, opts?): Promise<string>;      // read only
+  runCommand(cmd: string, opts?): Promise<string>;      // raw read compatibility path
+  runOperation(id: string, input: unknown, opts?): Promise<string>; // typed read
   authorizeWrite(cmd: string): void;                    // after confirm
-  runWriteCommand(cmd: string, opts?): Promise<string>; // single-shot write
+  runWriteCommand(cmd: string, opts?): Promise<string>; // raw compatibility write
+  runWriteOperation(id: string, input: unknown, opts?): Promise<string>; // typed write
   disconnect(): Promise<void>;
   readonly lastCommandTiming: CommandTiming | null;     // for logging
 }

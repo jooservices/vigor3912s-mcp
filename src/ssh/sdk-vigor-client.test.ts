@@ -147,6 +147,7 @@ describe('SdkVigorClient', () => {
     const client = new SdkVigorClient(config());
     await expect(client.runWriteCommand('sys name wan1 x')).rejects.toMatchObject({
       code: 'unauthorized',
+      message: 'write command was not confirmed and was refused',
     });
   });
 

@@ -2,7 +2,8 @@ import { Vigor3912SClient } from '@jooservices/vigor3912s-sdk';
 import type { TypedOperation } from '@jooservices/vigor3912s-sdk/operations';
 import { isAllowedReadCommand } from '../commands/read-allowlist.js';
 import type { VigorConfig } from '../config.js';
-import { voidOperationForCommand } from '../sdk/void-operation-index.js';
+import type { AnyOperation } from '../sdk/operation-index.js';
+import { operationFor } from '../sdk/operation-index.js';
 import {
   type CommandTiming,
   type RunCommandOptions,
@@ -94,10 +95,7 @@ export class SdkVigorClient implements VigorClient {
       );
     }
     if (!this.writeAuthorized.has(command)) {
-      throw new VigorCommandError(
-        'unauthorized',
-        `write command was not confirmed and was refused: ${command}`,
-      );
+      throw new VigorCommandError('unauthorized', 'write command was not confirmed and was refused');
     }
     this.writeAuthorized.delete(command);
     if (this.closed) {
@@ -106,9 +104,106 @@ export class SdkVigorClient implements VigorClient {
     return this.exec(command, opts);
   }
 
+  async runOperation(
+    manifestId: string,
+    input: unknown,
+    opts: RunCommandOptions = {},
+  ): Promise<string> {
+    const op = operationFor(manifestId);
+    if (!op) {
+      throw new VigorCommandError('invalid', `unknown SDK operation and was refused: ${manifestId}`);
+    }
+    if (op.classification !== 'read') {
+      throw new VigorCommandError(
+        'invalid',
+        `operation "${manifestId}" is not a read operation and was refused`,
+      );
+    }
+    const frames = this.renderFrames(op, input);
+    this.refuseForbiddenFrames(frames);
+    if (this.closed) {
+      throw new VigorCommandError('closed', 'client is closed');
+    }
+    return this.invokeOperation(op, input, opts);
+  }
+
+  async runWriteOperation(
+    manifestId: string,
+    input: unknown,
+    opts: RunCommandOptions = {},
+  ): Promise<string> {
+    const op = operationFor(manifestId);
+    if (!op) {
+      throw new VigorCommandError('invalid', `unknown SDK operation and was refused: ${manifestId}`);
+    }
+    if (op.classification === 'read') {
+      throw new VigorCommandError(
+        'invalid',
+        `operation "${manifestId}" is not a write operation and was refused`,
+      );
+    }
+    const frames = this.renderFrames(op, input);
+    this.refuseForbiddenFrames(frames);
+    const rendered = frames.map((f) => f.command).join('\n');
+    if (this.cfg.readOnly) {
+      throw new VigorCommandError(
+        'unauthorized',
+        'read-only mode is enabled; write commands are refused',
+      );
+    }
+    if (!this.writeAuthorized.has(rendered)) {
+      throw new VigorCommandError(
+        'unauthorized',
+        `write operation "${manifestId}" was not confirmed and was refused`,
+      );
+    }
+    this.writeAuthorized.delete(rendered);
+    if (this.closed) {
+      throw new VigorCommandError('closed', 'client is closed');
+    }
+    return this.invokeOperation(op, input, opts);
+  }
+
   async disconnect(): Promise<void> {
     this.closed = true;
     await this.transport.close('mcp_disconnect');
+  }
+
+  private renderFrames(op: AnyOperation, input: unknown): readonly { readonly command: string }[] {
+    try {
+      return op.buildFrames(input);
+    } catch (err) {
+      throw mapSdkError(err);
+    }
+  }
+
+  private refuseForbiddenFrames(frames: readonly { readonly command: string }[]): void {
+    for (const frame of frames) {
+      if (isForbidden(frame.command)) {
+        throw new VigorCommandError(
+          'invalid',
+          `command is forbidden and was refused: ${frame.command}`,
+        );
+      }
+    }
+  }
+
+  private async invokeOperation(
+    op: AnyOperation,
+    input: unknown,
+    opts: RunCommandOptions,
+  ): Promise<string> {
+    const executeOpts = {
+      ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+      ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
+    };
+    try {
+      const operation = op as unknown as TypedOperation<unknown, unknown>;
+      const parsed = await this.sdk.invoke(operation, input, executeOpts);
+      return formatInvokeResult(parsed);
+    } catch (err) {
+      throw mapSdkError(err);
+    }
   }
 
   private async exec(command: string, opts: RunCommandOptions): Promise<string> {
@@ -117,12 +212,6 @@ export class SdkVigorClient implements VigorClient {
       ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
     };
     try {
-      const typed = voidOperationForCommand(command);
-      if (typed !== undefined) {
-        const operation = typed as TypedOperation<undefined, unknown>;
-        const parsed = await this.sdk.invoke(operation, undefined, executeOpts);
-        return formatInvokeResult(parsed);
-      }
       const result = await this.sdk.execute(command, executeOpts);
       return result.stdout;
     } catch (err) {

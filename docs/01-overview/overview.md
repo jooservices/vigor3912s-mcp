@@ -5,11 +5,10 @@ An MCP (Model Context Protocol) server that lets AI assistants operate a
 
 ## What it does
 
-- Exposes the router's **CLI command set** (302 tools / 43 families) as MCP
-  tools: curated registry families plus auto-registered zero-arg SDK ops
-  (`sdk_void`).
-- **150 read tools** — status / diagnostics / views, run freely when exposed.
-- **152 write tools** — configuration changes, guarded by Ed25519 signed
+- Exposes the router's **CLI command set** (666 tools / 43 families) as MCP
+  tools: curated registry families plus schema-generated SDK operations.
+- **220 read tools** — status / diagnostics / views, run freely when exposed.
+- **446 write tools** — configuration changes, guarded by Ed25519 signed
   approval (preview → signature → execute).
 - Executes via **`@jooservices/vigor3912s-sdk`** over **`@jooservices/ssh-client`**.
 - Logs **every request** to a local SQLite database with timing, outcomes, and
@@ -37,7 +36,8 @@ An MCP (Model Context Protocol) server that lets AI assistants operate a
   `linux clean *`) is refused at the client.
 - Optional **read-only / `EXPOSE_TOOLS=readonly`** limits the AI surface.
 - Secrets and passwords are **redacted** in logs.
-- CI E2E never touches a real router for writes.
+- Local real-router E2E is read-only; CI E2E may exercise confirmed writes only
+  against the simulated DrayOS server.
 
 See [`architecture.md`](./architecture.md) and the project `README.md` for
 details.
