@@ -1,5 +1,4 @@
 import { allOperations } from '../../../sdk/operation-index.js';
-import { registerExtraWritePolicy } from '../../write-policy.js';
 import { S } from '../builders.js';
 import type { CommandDef, FamilyDef } from '../types.js';
 
@@ -67,9 +66,6 @@ export function buildSdkGeneratedFamily(curated: readonly FamilyDef[]): FamilyDe
     const desc = `SDK ${op.manifestId} (${op.classification})`;
     const cmd = S(id, 'sdk_generated', op.manifestId, desc);
     commands.push(cmd);
-    if (op.classification === 'destructive') {
-      registerExtraWritePolicy(id, { confirm: 'dual' });
-    }
   }
 
   return {
