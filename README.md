@@ -127,7 +127,7 @@ is an explicit blind bypass:
 | --- | --- |
 | Node.js | >= 24.21.0 and < 25 (`package.json` `engines` / `.nvmrc`) |
 | npm | >= 12.0.2 and < 13 (SDK package engine) |
-| `@jooservices/ssh-client` | >= 1.2.0; CI defaults to v1.2.0 |
+| `@jooservices/ssh-client` | >= 1.3.0; CI defaults to v1.3.0 |
 | `@jooservices/vigor3912s-sdk` | >= 2.0.0; CI defaults to v2.0.0 |
 | Install layout | Sibling packages at `../ssh-client` and `../vigor3912s-sdk` for local/CI `file:` dependencies |
 | Router | Vigor 3912S with SSH enabled and reachable on the LAN |

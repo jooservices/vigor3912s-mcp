@@ -47,7 +47,7 @@ export function registerRead(
     const started = Date.now();
     try {
       command = cmd.render(args);
-      const timeoutMs = cmd.timeoutMs ?? 15000;
+      const timeoutMs = cmd.timeoutMs ?? 20000;
       const runOptions = { timeoutMs, ...(extra.signal ? { signal: extra.signal } : {}) };
       const raw = cmd.sdk
         ? await client.runOperation(cmd.sdk.manifestId, resolveSdkInput(cmd.sdk, args), runOptions)
