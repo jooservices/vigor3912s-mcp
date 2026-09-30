@@ -88,6 +88,14 @@ CLI command and signing fields:
 node tools/approve.mjs <confirmation_id>
 ```
 
+If the preview contains markers such as `<redacted:param>`, the CLI asks you
+to re-enter each secret with input hidden. It verifies that the restored
+command matches the requested digest before signing. The pending file stores
+only the marker and field names, never the entered values. This prompt requires
+an interactive TTY; the CLI refuses to sign a redacted intent without one.
+Signing a raw `sign_payload` skips that verification and requires an explicit
+warning-bearing blind mode: `node tools/approve.mjs --payload <file|-> --blind`.
+
 Paste the printed `signature` into the next tool call (same args +
 `confirmation_id` + `signature`). Dual-tier writes also need
 `"acknowledge": true`.
@@ -116,7 +124,8 @@ read is defined), and the `sys commit` outcome.
   an explicit `acknowledge: true`.
 - `sys commit` runs automatically after a successful write (unless the command
   is `skipCommit`, e.g. reboot).
-- Every request is logged locally; secrets are redacted.
+- Every request is logged locally; secret values are redacted from logs and
+  approval previews.
 
 ## 8. Read-only mode
 

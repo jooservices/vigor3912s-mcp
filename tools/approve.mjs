@@ -13,9 +13,12 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import readline from 'node:readline/promises';
+import { Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { signApproval } from '../dist/tools/approve-crypto.js';
 import { ConfirmGate } from '../dist/tools/confirm-gate.js';
+import { verifyReentry } from '../dist/tools/redaction.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cwd = path.resolve(here, '..');
@@ -37,10 +40,16 @@ const args = process.argv.slice(2);
 
 if (args[0] === '--payload') {
   const src = args[1];
-  if (!src) {
-    console.error('Usage: node tools/approve.mjs --payload <file|->');
+  if (!args.includes('--blind')) {
+    console.error('Refusing raw payload signing without --blind. This bypasses command re-entry verification.');
+    console.error('Use: node tools/approve.mjs --payload <file|-> --blind');
     process.exit(1);
   }
+  if (!src) {
+    console.error('Usage: node tools/approve.mjs --payload <file|-> --blind');
+    process.exit(1);
+  }
+  console.error('WARNING: blind payload signing skips command re-entry verification.');
   const text = src === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(src, 'utf8');
   const lines = text.trim().split('\n');
   if (lines.length !== 4) {
@@ -82,6 +91,29 @@ const found = pending.find((p) => p.confirmationId === id);
 if (!found) {
   console.error(`No pending confirmation with id "${id}".`);
   process.exit(1);
+}
+
+if (found.redactedFields.length > 0) {
+  if (!process.stdin.isTTY) {
+    console.error('Secret fields require interactive approval; no TTY is available.');
+    process.exit(1);
+  }
+  const muted = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+  const prompt = readline.createInterface({ input: process.stdin, output: muted, terminal: true });
+  const values = {};
+  try {
+    for (const field of found.redactedFields) {
+      process.stderr.write(`Re-enter ${field} (input hidden): `);
+      values[field] = await prompt.question('');
+      process.stderr.write('\n');
+    }
+  } finally {
+    prompt.close();
+  }
+  if (!verifyReentry(found, values)) {
+    console.error('command does not match what the assistant requested — NOT signed');
+    process.exit(2);
+  }
 }
 
 const signature = signApproval(

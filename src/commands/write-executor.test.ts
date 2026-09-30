@@ -126,6 +126,8 @@ describe('executeWrite', () => {
       client,
       { gate, store, autoCommit: false },
     );
+    expect(preview.preview).toBe('vpn wg peer 1 psk <redacted:key>');
+    expect(preview.redacted_fields).toEqual(['key']);
     const persisted = JSON.stringify({
       response: preview,
       pending: readFileSync(pendingFile, 'utf8'),
@@ -136,6 +138,14 @@ describe('executeWrite', () => {
     expect(preview.preview).not.toContain(key);
     expect(preview.sign_payload).not.toContain(key);
     expect(persisted).not.toContain(key);
+  });
+
+  it('rejects raw commands containing the redaction marker', async () => {
+    const { client, gate } = setup();
+    const cmd = { ...findCommand('user_set')!, render: () => 'user set <redacted:literal>' };
+    await expect(executeWrite(cmd, { param: 'set <redacted:literal>' }, client, { gate, store, autoCommit: false }))
+      .rejects.toMatchObject({ code: 'invalid' });
+    expect(gate.pendingViews()).toHaveLength(0);
   });
 
   it('authorizes the exact validated input rendered in the preview', async () => {

@@ -26,6 +26,7 @@ export interface WriteIntent {
   commandDigest: string;
   /** Human-readable preview with secrets redacted. */
   commandPreview: string;
+  redactedFields: string[];
   nonce: string;
   createdAt: number;
   expiresAt: number;
@@ -38,6 +39,7 @@ export interface PendingIntentView {
   toolId: string;
   commandDigest: string;
   commandPreview: string;
+  redactedFields: string[];
   nonce: string;
   createdAt: number;
   expiresAt: number;
@@ -90,7 +92,7 @@ export class ConfirmGate {
     return run;
   }
 
-  create(toolId: string, command: string, commandPreview: string): CreateIntentResult {
+  create(toolId: string, command: string, commandPreview: string, redactedFields: string[] = []): CreateIntentResult {
     this.prune();
     if (this.intents.size >= this.maxPending) {
       throw new ConfirmError(
@@ -111,6 +113,7 @@ export class ConfirmGate {
       toolId,
       commandDigest,
       commandPreview,
+      redactedFields,
       nonce,
       createdAt: now,
       expiresAt,
@@ -176,6 +179,7 @@ export class ConfirmGate {
       toolId: i.toolId,
       commandDigest: i.commandDigest,
       commandPreview: i.commandPreview,
+      redactedFields: i.redactedFields,
       nonce: i.nonce,
       createdAt: i.createdAt,
       expiresAt: i.expiresAt,
@@ -195,7 +199,15 @@ export class ConfirmGate {
           typeof (i as PendingIntentView).commandPreview === 'string' &&
           typeof (i as PendingIntentView).nonce === 'string' &&
           typeof (i as PendingIntentView).expiresAt === 'number',
-      );
+      ).map((intent) => {
+        const view = intent as PendingIntentView;
+        return {
+          ...view,
+          redactedFields: Array.isArray(view.redactedFields)
+            ? view.redactedFields.filter((field): field is string => typeof field === 'string')
+            : [],
+        };
+      });
     } catch {
       return [];
     }

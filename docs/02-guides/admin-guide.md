@@ -91,6 +91,13 @@ fw 4.4.7_RC2):
    `signature` (+ `acknowledge: true` when the tier is dual).
 4. Confirm with `internet_view` again.
 
+For previews containing `<redacted:FIELD>`, the approver CLI requests that
+field again with terminal input hidden, then checks the reconstructed command
+digest before signing. Pending confirmation files store only field names and
+redacted previews. Do not use blind payload signing for routine approvals;
+`--payload` works only with `--blind` and prints a warning because it bypasses
+command re-entry verification.
+
 Helpers (LAN only; never commit `.env`): `tools/e2e_wan7_ispname_*.mjs`.
 
 ## Before risky operations

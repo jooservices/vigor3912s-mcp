@@ -101,6 +101,13 @@ Every registry command becomes an MCP tool:
   `confirmation_id` / `sign_payload`; second call requires `signature`
   (and `acknowledge: true` for dual-tier tools).
 
+When a write includes secret fields, its preview uses named markers such as
+`<redacted:param>` and returns `redacted_fields`. Approving that intent prompts
+for each value with input hidden; the CLI signs only if the re-entered values
+rebuild the exact command digest. It refuses this flow without an interactive
+TTY. Raw payload signing is an explicit blind bypass:
+`node tools/approve.mjs --payload <file|-> --blind` prints a warning.
+
 | Tool | CLI (live-verified, fw 4.4.7_RC2) |
 | --- | --- |
 | `sys_version` | `sys version` |
@@ -168,7 +175,8 @@ Every router request is logged to `data/vigor3912s.db` (or `VIGOR_LOG_DB`, WAL):
 - `write_audit` — preview / executed / failed / expired / mismatch / denied,
   optional before/after snapshots, `commit_status`
 
-Passwords and configured `secretArgs` are redacted to `***`. Logging is
+Passwords and configured `secretArgs` are redacted to `***` in argument logs;
+secret command values use named placeholders in approval previews. Logging is
 best-effort and never blocks a router command.
 
 ```bash

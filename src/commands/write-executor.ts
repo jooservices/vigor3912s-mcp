@@ -116,8 +116,10 @@ async function executeWriteLocked(
   const argsLog = redactArgs(rest, secretArgs);
   let command: string;
   let sdkInput: unknown;
+  let redacted: ReturnType<typeof redactCommand>;
   try {
     command = cmd.render(rest);
+    redacted = redactCommand(command, rest, secretArgs);
     if (cmd.sdk) sdkInput = resolveSdkInput(cmd.sdk, rest);
   } catch (e) {
     const code = errCode(e) ?? 'invalid';
@@ -145,14 +147,14 @@ async function executeWriteLocked(
   }
   const cid = typeof confirmation_id === 'string' ? confirmation_id : undefined;
   const sig = typeof signature === 'string' ? signature : undefined;
-  const commandLog = redactCommand(command, rest, secretArgs);
+  const commandLog = redacted.preview;
   const message = confirmMessage(commandLog, cmd, gate.ttlMs);
   // Writes never use `auto` as a confirm bypass (reads never reach here).
   const tier = cmd.confirm === 'auto' ? 'confirm' : (cmd.confirm ?? 'confirm');
 
   const hasConfirmation = cid !== undefined || sig !== undefined;
   if (!hasConfirmation) {
-    const created = gate.create(cmd.id, command, commandLog);
+    const created = gate.create(cmd.id, command, commandLog, redacted.fields);
     store.request({
       toolId: cmd.id,
       kind: 'write',
@@ -173,6 +175,7 @@ async function executeWriteLocked(
     return {
       status: 'needs_confirmation',
       preview: commandLog,
+      redacted_fields: redacted.fields,
       confirmation_id: created.confirmationId,
       nonce: created.nonce,
       command_digest: created.commandDigest,
