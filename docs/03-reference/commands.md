@@ -687,7 +687,7 @@ Every command in the registry becomes an MCP tool. Generated from
 | `vpn_wg_interface` | write | sdk_generated |  |  | listenPort, address, mtu | - | - |  |
 | `vpn_wg_keygen` | write | sdk_generated | yes |  | - | - | - |  |
 | `vpn_wg_keyset` | write | sdk_generated | yes |  | privateKey | - | privateKey |  |
-| `vpn_wg_peer` | write | sdk_generated |  |  | index, action, key, allowedIps, seconds | - | - |  |
+| `vpn_wg_peer` | write | sdk_generated |  |  | index, action, key, allowedIps, seconds | - | key |  |
 | `vpn_wg_show` | read | sdk_generated |  |  | - | - | - |  |
 | `wan_budget_status` | read | sdk_generated |  |  | - | - | - |  |
 | `sdk_wan_detect` | read | sdk_generated |  |  | - | - | - |  |
@@ -735,3 +735,12 @@ Every command in the registry becomes an MCP tool. Generated from
   router state in the audit log.
 - **Secret args**: values redacted to `***` in logs.
 - **Skip commit**: no auto `sys commit` after this write.
+
+## Security
+
+SDK-backed tools automatically classify string fields with secret-bearing
+names and redact them from previews, pending approvals and request/audit
+metadata. Writes with secret arguments do not persist router output. Curated
+secret fields remain explicitly listed in the write policy. This MCP-side
+heuristic stays in place until the SDK publishes a schema-level `sensitive`
+flag.

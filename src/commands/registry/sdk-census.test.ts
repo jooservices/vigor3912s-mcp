@@ -3,6 +3,7 @@ import { inputSchemaFor } from '@jooservices/vigor3912s-sdk/schemas';
 import { allOperations, operationFor } from '../../sdk/operation-index.js';
 import { resolveSdkInput } from '../sdk-invoke.js';
 import { jsonSchemaToZod } from '../../sdk/schema-to-zod.js';
+import { secretFieldsOf } from '../../sdk/secret-fields.js';
 import { allCommands } from './index.js';
 import { RAW_EXECUTE_ALLOWLIST, SDK_RENDER_FIXTURES, SDK_TOOL_EXCLUSIONS } from './sdk-fixtures.js';
 
@@ -54,6 +55,18 @@ describe('SDK census gates', () => {
     for (const cmd of applied) {
       if (!cmd.sdk || !destructive.has(cmd.sdk.manifestId)) continue;
       expect(cmd.confirm, `${cmd.id} -> ${cmd.sdk.manifestId}`).toBe('dual');
+    }
+  });
+
+  it('redacts every secret-looking string field from SDK write schemas', () => {
+    for (const cmd of allCommands()) {
+      if (cmd.kind !== 'write' || !cmd.sdk) continue;
+      const schema = inputSchemaFor(cmd.sdk.manifestId) ?? null;
+      const fields = secretFieldsOf(schema);
+      const required = jsonSchemaToZod(schema).wrap && fields.length > 0 ? ['input'] : fields;
+      for (const field of required) {
+        expect(cmd.secretArgs, `${cmd.id} -> ${field}`).toContain(field);
+      }
     }
   });
 

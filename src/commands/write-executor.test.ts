@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -110,6 +111,31 @@ describe('executeWrite', () => {
     expect(store.query<{ status: string; error_code: string }>(
       'SELECT status, error_code FROM write_audit',
     )).toEqual([{ status: 'denied', error_code: 'invalid' }]);
+  });
+
+  it('keeps a WireGuard PSK out of the preview, pending file, and database logs', async () => {
+    const { client } = setup();
+    const pendingFile = path.join(dir, 'pending.json');
+    const gate = new ConfirmGate(60_000, 100, pendingFile, pub);
+    const key = randomBytes(32).toString('base64');
+    expect(key).toHaveLength(44);
+    const cmd = findCommand('vpn_wg_peer')!;
+    const preview = await executeWrite(
+      cmd,
+      { index: 1, action: 'psk', key },
+      client,
+      { gate, store, autoCommit: false },
+    );
+    const persisted = JSON.stringify({
+      response: preview,
+      pending: readFileSync(pendingFile, 'utf8'),
+      requests: store.query('SELECT command, args_json, output FROM requests'),
+      audit: store.query('SELECT command, before_snapshot, after_snapshot FROM write_audit'),
+    });
+
+    expect(preview.preview).not.toContain(key);
+    expect(preview.sign_payload).not.toContain(key);
+    expect(persisted).not.toContain(key);
   });
 
   it('authorizes the exact validated input rendered in the preview', async () => {

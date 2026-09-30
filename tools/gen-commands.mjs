@@ -55,6 +55,15 @@ ${rows}
   router state in the audit log.
 - **Secret args**: values redacted to \`***\` in logs.
 - **Skip commit**: no auto \`sys commit\` after this write.
+
+## Security
+
+SDK-backed tools automatically classify string fields with secret-bearing
+names and redact them from previews, pending approvals and request/audit
+metadata. Writes with secret arguments do not persist router output. Curated
+secret fields remain explicitly listed in the write policy. This MCP-side
+heuristic stays in place until the SDK publishes a schema-level \`sensitive\`
+flag.
 `;
 fs.writeFileSync(out, md);
 console.log(`wrote ${out} (${allCommands().length} commands)`);

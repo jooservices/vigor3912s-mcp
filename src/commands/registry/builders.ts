@@ -2,6 +2,7 @@ import type { ZodRawShape } from 'zod';
 import { inputSchemaFor } from '@jooservices/vigor3912s-sdk/schemas';
 import { operationFor } from '../../sdk/operation-index.js';
 import { jsonSchemaToZod } from '../../sdk/schema-to-zod.js';
+import { secretFieldsOf } from '../../sdk/secret-fields.js';
 import { VigorCommandError } from '../../ssh/client.js';
 import { defaultToInput } from '../sdk-invoke.js';
 import type { CommandDef, CommandKind } from './types.js';
@@ -90,6 +91,13 @@ export const S = (
   const kind: CommandKind = op.classification === 'read' ? 'read' : 'write';
   const schema = inputSchemaFor(manifestId) ?? null;
   const converted = jsonSchemaToZod(schema);
+  const detectedSecrets = secretFieldsOf(schema);
+  const secretArgs = [
+    ...new Set([
+      ...(converted.wrap === 'input' && detectedSecrets.length > 0 ? ['input'] : detectedSecrets),
+      ...(opts.secretArgs ?? []),
+    ]),
+  ];
 
   const autoToInput = (args: Record<string, unknown>): unknown =>
     converted.wrap === 'input' ? args.input : defaultToInput(args);
@@ -119,7 +127,7 @@ export const S = (
     render,
     args: opts.args ?? converted.shape,
     ...(opts.format ? { format: opts.format } : {}),
-    ...(opts.secretArgs ? { secretArgs: opts.secretArgs } : {}),
+    ...(secretArgs.length > 0 ? { secretArgs } : {}),
     ...(opts.snapshotRead ? { snapshotRead: opts.snapshotRead } : {}),
     ...(opts.skipCommit ? { skipCommit: opts.skipCommit } : {}),
     sdk: { manifestId, toInput, validate, ...(opts.partial ? { partial: true } : {}) },

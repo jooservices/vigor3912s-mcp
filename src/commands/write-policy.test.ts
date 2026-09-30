@@ -28,6 +28,15 @@ describe('WRITE_POLICY / ConfirmTier', () => {
     expect(cmd.confirm).toBe('dual');
   });
 
+  it('merges SDK-derived secret arguments with explicit write policy', () => {
+    const cmd = applyWritePolicy({
+      id: 'ip_bgp',
+      kind: 'write',
+      secretArgs: ['community'],
+    });
+    expect(cmd.secretArgs).toEqual(['community', 'key']);
+  });
+
   it('keeps resolved policies stable after the registry is re-imported', async () => {
     const snapshot = (commands: ReturnType<typeof allCommands>) =>
       commands.map(({ id, confirm, affectsNetwork, secretArgs, snapshotRead, skipCommit }) => ({

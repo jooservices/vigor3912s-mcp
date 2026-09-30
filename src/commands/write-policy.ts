@@ -165,10 +165,14 @@ export function applyWritePolicy<T extends { id: string; kind: string }>(
     : undefined;
   const sdkClassification = manifestId ? operationFor(manifestId)?.classification : undefined;
   const confirm = resolveConfirmTier(kind, policy, sdkClassification);
-  const { confirm: _c, ...rest } = policy ?? {};
+  const { confirm: _c, secretArgs: policySecretArgs, ...rest } = policy ?? {};
+  const currentSecretArgs =
+    'secretArgs' in cmd && Array.isArray(cmd.secretArgs) ? cmd.secretArgs : [];
+  const secretArgs = [...new Set([...currentSecretArgs, ...(policySecretArgs ?? [])])];
   return {
     ...cmd,
     ...rest,
+    ...(secretArgs.length > 0 ? { secretArgs } : {}),
     confirm,
   };
 }
