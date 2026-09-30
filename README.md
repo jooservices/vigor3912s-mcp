@@ -5,7 +5,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/jooservices/vigor3912s-mcp/badge)](https://securityscorecards.dev/viewer/?uri=github.com/jooservices/vigor3912s-mcp)
 [![Node](https://img.shields.io/badge/Node-24.21.0%2B-blue.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.0.1-blue.svg)](CHANGELOG.md)
 
 MCP server (Model Context Protocol) for a DrayTek Vigor 3912S router (DrayOS)
 over SSH.
@@ -21,7 +21,7 @@ Covers the **CLI command set as MCP tools** (666 tools / 43 families), driven by
 
 ## Status
 
-`v2.0.0` — local stdio MCP server for trusted LAN use; hosted on
+`v2.0.1` — local stdio MCP server for trusted LAN use; hosted on
 [jooservices/vigor3912s-mcp](https://github.com/jooservices/vigor3912s-mcp).
 
 The registry contains 666 tools across 43 families (220 read / 446 write); 663
