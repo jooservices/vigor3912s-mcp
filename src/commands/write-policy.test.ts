@@ -19,7 +19,6 @@ describe('WRITE_POLICY / ConfirmTier', () => {
   it('merges confirm tier onto findCommand / writeCommands', () => {
     const passwd = findCommand('sys_passwd');
     expect(passwd?.confirm).toBe('dual');
-    expect(passwd?.dangerous).toBe(true);
     expect(passwd?.secretArgs).toEqual(['old', 'new']);
 
     const ipAddr = findCommand('ip_addr');
@@ -30,14 +29,12 @@ describe('WRITE_POLICY / ConfirmTier', () => {
     const commit = findCommand('sys_commit');
     expect(commit?.confirm).toBe('confirm');
     expect(commit?.skipCommit).toBe(true);
-    expect(commit?.dangerous).toBe(false);
 
     const wanStatus = findCommand('wan_status');
     expect(wanStatus?.confirm).toBe('auto');
-    expect(wanStatus?.dangerous).toBe(false);
   });
 
-  it('marks dual-confirm tools (compat dangerous=true)', () => {
+  it('marks dual-confirm tools', () => {
     const mustBeDual = [
       'sys_passwd',
       'sys_reboot',
@@ -56,7 +53,6 @@ describe('WRITE_POLICY / ConfirmTier', () => {
     ];
     for (const id of mustBeDual) {
       expect(findCommand(id)?.confirm, id).toBe('dual');
-      expect(findCommand(id)?.dangerous, id).toBe(true);
     }
   });
 

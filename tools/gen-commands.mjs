@@ -19,7 +19,7 @@ const argsOf = (c) => Object.keys(c.args).join(', ') || '-';
 const rows = allCommands()
   .map(
     (c) =>
-      `| \`${c.id}\` | ${c.kind} | ${c.family} | ${flag(c.dangerous)} | ${flag(c.affectsNetwork)} | ${argsOf(c)} | ${c.snapshotRead ?? '-'} | ${c.secretArgs?.join(', ') ?? '-'} | ${c.skipCommit ? 'yes' : ''} |`,
+      `| \`${c.id}\` | ${c.kind} | ${c.family} | ${flag(c.confirm === 'dual')} | ${flag(c.affectsNetwork)} | ${argsOf(c)} | ${c.snapshotRead ?? '-'} | ${c.secretArgs?.join(', ') ?? '-'} | ${c.skipCommit ? 'yes' : ''} |`,
   )
   .join('\n');
 
