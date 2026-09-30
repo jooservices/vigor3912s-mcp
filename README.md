@@ -5,7 +5,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/jooservices/vigor3912s-mcp/badge)](https://securityscorecards.dev/viewer/?uri=github.com/jooservices/vigor3912s-mcp)
 [![Node](https://img.shields.io/badge/Node-24.21.0%2B-blue.svg)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.0.1-blue.svg)](CHANGELOG.md)
 
 MCP server (Model Context Protocol) for a DrayTek Vigor 3912S router (DrayOS)
 over SSH.
@@ -21,7 +21,7 @@ Covers the **CLI command set as MCP tools** (666 tools / 43 families), driven by
 
 ## Status
 
-`v2.0.0` — local stdio MCP server for trusted LAN use; hosted on
+`v2.0.1` — local stdio MCP server for trusted LAN use; hosted on
 [jooservices/vigor3912s-mcp](https://github.com/jooservices/vigor3912s-mcp).
 
 The registry contains 666 tools across 43 families (220 read / 446 write); 663
@@ -127,7 +127,7 @@ is an explicit blind bypass:
 | --- | --- |
 | Node.js | >= 24.21.0 and < 25 (`package.json` `engines` / `.nvmrc`) |
 | npm | >= 12.0.2 and < 13 (SDK package engine) |
-| `@jooservices/ssh-client` | >= 1.2.0; CI defaults to v1.2.0 |
+| `@jooservices/ssh-client` | >= 1.3.0; CI defaults to v1.3.0 |
 | `@jooservices/vigor3912s-sdk` | >= 2.0.0; CI defaults to v2.0.0 |
 | Install layout | Sibling packages at `../ssh-client` and `../vigor3912s-sdk` for local/CI `file:` dependencies |
 | Router | Vigor 3912S with SSH enabled and reachable on the LAN |

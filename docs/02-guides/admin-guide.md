@@ -56,7 +56,8 @@ goes through the confirm gate; commands marked **dangerous** also need
 | Port mapping | `show_portmap` | — |
 
 Traceroute reads and generated SDK ping/traceroute variants have a 60-second
-command timeout. Other read tools use 15 seconds by default.
+command timeout. Other read tools use 20 seconds by default. The first call of a
+session also spends part of that budget on the SSH connect.
 
 ## Management & security
 
