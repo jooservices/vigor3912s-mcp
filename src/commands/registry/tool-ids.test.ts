@@ -317,7 +317,7 @@ const BASELINE_TOOL_IDS: readonly string[] = [
  * schema/operation branch is intentionally unreleased, so this count is a
  * local integration gate and must be refreshed when that branch changes.
  */
-const EXPECTED_TOOL_COUNT = 666;
+const EXPECTED_TOOL_COUNT = 667;
 
 describe('tool id inventory', () => {
   it('keeps every T2a baseline tool id (superset — no id removed or renamed)', () => {

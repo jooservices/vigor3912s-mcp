@@ -1,13 +1,14 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z, type ZodRawShape } from 'zod';
 import { LogStore } from '../db/log.js';
-import type { VigorClient } from '../ssh/client.js';
+import { VigorCommandError, type VigorClient } from '../ssh/client.js';
 import type { ConfirmGate } from '../tools/confirm-gate.js';
 import { redactArgs } from '../tools/redaction.js';
 import { errCode, errMsg, iso, timingOf } from './tool-log.js';
 import type { CommandDef } from './registry/index.js';
 import { allCommands } from './registry/index.js';
 import { resolveSdkInput } from './sdk-invoke.js';
+import { routerCliFailureKind } from './router-cli-result.js';
 import { executeWrite } from './write-executor.js';
 
 function text(content: unknown): string {
@@ -46,12 +47,22 @@ export function registerRead(
     let command = cmd.id;
     const started = Date.now();
     try {
+      if (cmd.unsupported) {
+        throw new VigorCommandError(
+          'invalid',
+          `Unsupported on firmware ${cmd.unsupported.firmware}. ${cmd.unsupported.message}`,
+        );
+      }
       command = cmd.render(args);
       const timeoutMs = cmd.timeoutMs ?? 20000;
       const runOptions = { timeoutMs, ...(extra.signal ? { signal: extra.signal } : {}) };
       const raw = cmd.sdk
         ? await client.runOperation(cmd.sdk.manifestId, resolveSdkInput(cmd.sdk, args), runOptions)
         : await client.runCommand(command, runOptions);
+      const rejection = routerCliFailureKind(raw);
+      if (rejection) {
+        throw new VigorCommandError('invalid', `Router rejected "${cmd.id}" (${rejection}).`);
+      }
       const ended = Date.now();
       store.request({
         toolId: cmd.id,

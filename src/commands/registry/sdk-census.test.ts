@@ -18,7 +18,10 @@ describe('SDK census gates', () => {
       .map((op) => op.manifestId)
       .filter((id) => !boundManifestIds.has(id) && !(id in SDK_TOOL_EXCLUSIONS));
     expect(uncovered, uncovered.join(', ')).toEqual([]);
-    expect(SDK_TOOL_EXCLUSIONS).toEqual({});
+    expect(SDK_TOOL_EXCLUSIONS).toEqual({
+      'cli.show.traffic': 'JOODT-35: the bare form is rejected; curated show_traffic uses the typed WAN/direction form',
+      'cli.show.clienttraffic': 'JOODT-35: the bare form is rejected; curated show_clienttraffic uses the typed device/interface/direction form',
+    });
   });
 
   it('every SDK_TOOL_EXCLUSIONS entry is a real implemented manifestId (no stale reasons)', () => {

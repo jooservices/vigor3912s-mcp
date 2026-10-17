@@ -13,14 +13,26 @@ export const sysFamily: FamilyDef = {
     S('sys_cmdlog', 'sys', 'cli.sys.cmdlog', 'Command history'),
     S('sys_cc', 'sys', 'cli.sys.cc', 'Country / wireless region code'),
     S('sys_qrybuf', 'sys', 'cli.sys.qrybuf', 'Memory / buffer usage'),
-    S('sys_pollbuf', 'sys', 'cli.sys.pollbuf', 'Poll buffer usage'),
+    S('sys_pollbuf', 'sys', 'cli.sys.pollbuf', 'Unsupported bare poll-buffer read form', {
+      unsupported: {
+        firmware: '4.4.7_RC2',
+        evidence: 'The bare form returned insufficient arguments; live help lists only on/off state-changing forms.',
+        message: 'Poll-buffer changes are exposed separately as confirmation-gated write tools.',
+      },
+    }),
     S('sys_health', 'sys', 'cli.sys.health', 'System health for one metric'),
     S('sys_info', 'sys', 'cli.sys.info', 'System information'),
     S('sys_fr_log', 'sys', 'cli.sys.frlog', 'Failure-related log'),
     S('sys_max_session', 'sys', 'cli.sys.maxsession', 'Maximum session configuration'),
     S('sys_app_statistic', 'sys', 'cli.sys.appstatistic', 'Application statistics'),
     S('sys_app_bandwidth', 'sys', 'cli.sys.appbandwidth', 'Application bandwidth usage'),
-    S('sys_time', 'sys', 'cli.sys.time', 'System time'),
+    S('sys_time', 'sys', 'cli.sys.time', 'Unsupported bare system-time query form', {
+      unsupported: {
+        firmware: '4.4.7_RC2',
+        evidence: 'The bare form returned a help listing; live help lists explicit subcommands including read-only show.',
+        message: 'Use sys_time_show for the supported read-only query.',
+      },
+    }),
     S('sys_dnsCacheTbl', 'sys', 'cli.sys.dnscachetbl', 'DNS cache table'),
     S('sys_dashboard', 'sys', 'cli.sys.dashboard', 'Dashboard summary'),
     S('sys_passwd', 'sys', 'cli.sys.passwd', 'Change the admin password', {

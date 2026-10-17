@@ -49,6 +49,12 @@ export interface CommandDef {
   skipCommit?: boolean;
   /** When set, this tool executes via the SDK's typed `invoke()` instead of a raw string. */
   sdk?: CommandSdkBinding;
+  /** A documented firmware-specific unsupported read form; the driver returns an error without sending it. */
+  unsupported?: {
+    firmware: string;
+    evidence: string;
+    message: string;
+  };
 }
 
 export interface FamilyDef {
