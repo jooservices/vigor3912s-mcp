@@ -5,6 +5,7 @@ import { buildServer } from '../index.js';
 import { registerRead } from './build.js';
 import { LogStore } from '../db/log.js';
 import { FakeVigorClient } from '../test/fake-vigor-client.js';
+import { loadConfig, type VigorConfig } from '../config.js';
 import {
   generateApproveKeyPair,
   publicKeyToConfigValue,
@@ -48,7 +49,7 @@ function signPreview(body: {
   );
 }
 
-async function startServer(cfgValue = cfg()) {
+async function startServer(cfgValue: ReturnType<typeof cfg> | VigorConfig = cfg()) {
   const fake = new FakeVigorClient(Boolean(cfgValue.readOnly));
   const { server, store } = buildServer(cfgValue as never, { client: fake });
   const [serverT, clientT] = InMemoryTransport.createLinkedPair();
@@ -182,9 +183,9 @@ describe('registry -> MCP tool generation', () => {
     await server.close();
   });
 
-  it('write tool preview does NOT send anything to the router', async () => {
+  it('EXPOSE_TOOLS=all still gates writes behind confirmation', async () => {
     FakeVigorClient.script = { '': '' };
-    const { mcp, server } = await startServer();
+    const { mcp, server } = await startServer(cfg({ exposeTools: { mode: 'all' } }));
     const res = await mcp.callTool({ name: 'wan_disable', arguments: { wan: 1 } });
     const body = JSON.parse(textOf(res));
     expect(body.status).toBe('needs_confirmation');
@@ -353,6 +354,20 @@ describe('registry -> MCP tool generation', () => {
     expect((await all.mcp.listTools()).tools).toHaveLength(666);
     expect(allCommands()).toHaveLength(666);
     await all.server.close();
+  });
+
+  it('starts with only read tools when EXPOSE_TOOLS is unset', async () => {
+    const config = loadConfig({
+      VIGOR_PASSWORD: 'test-only',
+      VIGOR_READ_ONLY: 'true',
+      VIGOR_SSH_INSECURE_SKIP_VERIFY: 'true',
+      VIGOR_LOG_DB: ':memory:',
+    });
+    const { mcp, server } = await startServer(config);
+    const names = (await mcp.listTools()).tools.map((tool) => tool.name);
+    expect(names).toHaveLength(readCommands().length);
+    expect(names.every((name) => readCommands().some((command) => command.id === name))).toBe(true);
+    await server.close();
   });
 
   it('registers exactly an explicit tool id list', async () => {
