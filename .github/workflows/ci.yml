@@ -69,7 +69,11 @@ jobs:
           (cd vigor3912s-sdk && npm ci && npm run build)
           (cd vigor3912s-mcp && npm ci)
 
-      - name: CI (lint + tests + build)
+      - name: Dependency audit
+        working-directory: vigor3912s-mcp
+        run: npm audit
+
+      - name: CI (audit + lint + tests + build)
         working-directory: vigor3912s-mcp
         run: npm run ci
 
