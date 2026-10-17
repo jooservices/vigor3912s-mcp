@@ -19,7 +19,7 @@ const argsOf = (c) => Object.keys(c.args).join(', ') || '-';
 const rows = allCommands()
   .map(
     (c) =>
-      `| \`${c.id}\` | ${c.kind} | ${c.family} | ${flag(c.confirm === 'dual')} | ${flag(c.affectsNetwork)} | ${argsOf(c)} | ${c.snapshotRead ?? '-'} | ${c.secretArgs?.join(', ') ?? '-'} | ${c.skipCommit ? 'yes' : ''} |`,
+      `| \`${c.id}\` | ${c.kind} | ${c.family} | ${flag(c.confirm === 'dual')} | ${flag(c.affectsNetwork)} | ${argsOf(c)} | ${c.snapshotRead ?? '-'} | ${c.secretArgs?.join(', ') ?? '-'} | ${c.skipCommit ? 'yes' : ''} | ${c.unsupported ? `Unsupported on ${c.unsupported.firmware}: ${c.unsupported.evidence}` : ''} |`,
   )
   .join('\n');
 
@@ -39,8 +39,8 @@ ${families}
 
 ## Commands
 
-| Tool | Kind | Family | Dangerous | Affects network | Args | Snapshot read | Secret args | Skip commit |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Tool | Kind | Family | Dangerous | Affects network | Args | Snapshot read | Secret args | Skip commit | Availability |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 ${rows}
 
 ### Legend
@@ -55,6 +55,7 @@ ${rows}
   router state in the audit log.
 - **Secret args**: values redacted to \`***\` in logs.
 - **Skip commit**: no auto \`sys commit\` after this write.
+- **Availability**: firmware-specific evidence for a read form that the driver refuses to send.
 
 ## Security
 

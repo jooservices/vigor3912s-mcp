@@ -59,6 +59,7 @@ export interface SdkCommandOptions {
   skipCommit?: boolean;
   partial?: boolean;
   timeoutMs?: number;
+  unsupported?: CommandDef['unsupported'];
 }
 
 function issuesOf(error: { issues: { path: (string | number)[]; message: string }[] }): string {
@@ -132,6 +133,7 @@ export const S = (
     ...(opts.snapshotRead ? { snapshotRead: opts.snapshotRead } : {}),
     ...(opts.skipCommit ? { skipCommit: opts.skipCommit } : {}),
     sdk: { manifestId, toInput, validate, ...(opts.partial ? { partial: true } : {}) },
+    ...(opts.unsupported ? { unsupported: opts.unsupported } : {}),
     ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
   };
 };

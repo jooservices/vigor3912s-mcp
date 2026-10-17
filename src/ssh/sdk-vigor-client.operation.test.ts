@@ -29,6 +29,40 @@ afterEach(() => {
 });
 
 describe('SdkVigorClient.runOperation', () => {
+  it('maps mocked transport stderr to a sanitized SDK command rejection', async () => {
+    const transport: Transport = {
+      isOpen: true,
+      async send() {
+        return { stdout: 'normal-looking output', stderr: 'private stderr output' };
+      },
+      async close() {},
+    };
+    const client = new SdkVigorClient(config(), () => transport);
+    await expect(client.runOperation('cli.sys.version', undefined)).rejects.toMatchObject({
+      code: 'invalid',
+      message: 'Router rejected "cli.sys.version" (stderr).',
+    });
+  });
+
+  it.each([
+    ['% Invalid command', 'invalid'],
+    ['% Unknown command', 'unknown'],
+    ['% Incomplete command', 'incomplete'],
+    ['%% Error rejected', 'error'],
+    ['% Command not found', 'command-not-found'],
+    ['% Insufficient arguments !!!', 'insufficient-arguments'],
+    ['% input wan1/wan2 to set name', 'usage'],
+    ['% Valid commands are: show, sys', 'help-listing'],
+  ] as const)('maps mocked shell rejection %s to a sanitized tool error', async (output, kind) => {
+    FakeSshClient.script['sys version'] = `${output}\nprivate router output`;
+    const client = new SdkVigorClient(config());
+    await expect(client.runOperation('cli.sys.version', undefined)).rejects.toMatchObject({
+      code: 'invalid',
+      message: `Router rejected "cli.sys.version" (${kind}).`,
+    });
+    expect(FakeSshClient.instances[0]?.written).toEqual(['sys version']);
+  });
+
   it('creates a fresh SDK session after an output limit failure', async () => {
     const transports: Array<{ transport: Transport; closeReasons: string[] }> = [];
     let sends = 0;

@@ -31,7 +31,15 @@ function collectCoveredManifestIds(families: readonly FamilyDef[]): Set<string> 
 export const RELEASED_GENERATED_TOOL_IDS: Readonly<Record<string, string>> = {
   'cli.service': 'service',
   'cli.wan.detect': 'sdk_wan_detect',
+  'cli.show.traffic.wan': 'show_traffic_wan',
+  'cli.show.clienttraffic.device': 'show_clienttraffic_device',
 };
+
+/** Bare operations replaced by the curated tools' argument-required forms. */
+export const REPLACED_BARE_READ_MANIFEST_IDS: ReadonlySet<string> = new Set([
+  'cli.show.traffic',
+  'cli.show.clienttraffic',
+]);
 
 /**
  * MCP tools for every implemented SDK `TypedOperation` not already covered by
@@ -51,6 +59,9 @@ export function buildSdkGeneratedFamily(curated: readonly FamilyDef[]): FamilyDe
   const ops = [...allOperations()].sort((a, b) => a.manifestId.localeCompare(b.manifestId));
 
   for (const op of ops) {
+    // The bare forms are rejected by firmware 4.4.7_RC2. Their curated ids
+    // now bind the parameterized SDK operations instead.
+    if (REPLACED_BARE_READ_MANIFEST_IDS.has(op.manifestId)) continue;
     const releasedId = RELEASED_GENERATED_TOOL_IDS[op.manifestId];
     if (covered.has(op.manifestId) && !releasedId) continue;
 

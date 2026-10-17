@@ -24,12 +24,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { signApproval } from '../dist/tools/approve-crypto.js';
+import { routerCliFailureKind } from '../dist/commands/router-cli-result.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cwd = path.resolve(here, '..');
-const STATE_FILE = path.join(cwd, 'recon-output', 'e2e-passed.json');
+const STATE_FILE = path.resolve(
+  process.env.VIGOR_E2E_STATE_FILE ?? path.join(cwd, 'recon-output', 'e2e-passed.json'),
+);
 
 const READ_ARGS = (id) => {
+  if (['show_traffic', 'show_traffic_wan'].includes(id)) {
+    return { wan: 'wan1', direction: 'tx' };
+  }
+  if (['show_clienttraffic', 'show_clienttraffic_device'].includes(id)) {
+    return { deviceIndex: 1, interfaceLabel: 'WAN1', direction: 'tx' };
+  }
   if (['ip_ping', 'ip_tracert', 'ip6_ping', 'ip6_tracert'].includes(id)) return { host: '8.8.8.8' };
   if (id === 'sys_health') return { metric: 'cpu_usage' };
   if (id === 'ha_show') return { section: 'generalSetup' };
@@ -37,6 +46,28 @@ const READ_ARGS = (id) => {
   if (id === 'ipf_flowtrack_view') return { mode: 'sessions' };
   if (id === 'csm_appe_show') return { group: 'all' };
   return {};
+};
+
+const UNSUPPORTED_READ_TOOLS = {
+  sys_pollbuf: 'bare read form unsupported; only state-changing on/off forms exist',
+  sys_time: 'bare query unsupported; use sys_time_show',
+  show_qryrdsl: 'bare query unsupported; use show_qryrdsl_status',
+};
+
+const SAFETY_SKIP_REASONS = {
+  wan_detect_mtu: 'active WAN MTU probing can create traffic and operational side effects',
+  wan_detect_mtu6: 'active IPv6 WAN MTU probing can create traffic and operational side effects',
+  ip_ping: 'active ping probe can generate traffic',
+  ip_tracert: 'active traceroute probe can generate traffic',
+  ip6_ping: 'active IPv6 ping probe can generate traffic',
+  ip6_tracert: 'active IPv6 traceroute probe can generate traffic',
+  apm_discover: 'active AP discovery can trigger scans or update discovered state',
+  sdk_ip_ping: 'active ping probe can generate traffic',
+  sdk_ip_tracert: 'active traceroute probe can generate traffic',
+  sdk_ip6_ping: 'active IPv6 ping probe can generate traffic',
+  sdk_ip6_tracert: 'active IPv6 traceroute probe can generate traffic',
+  service_refresh: 'refresh can update cached or service state',
+  show_ping: 'active ping diagnostic can generate traffic',
 };
 
 // Representative write tests executed only against the simulated server.
@@ -148,15 +179,26 @@ function savePassed(set) {
   fs.writeFileSync(STATE_FILE, JSON.stringify([...set].sort(), null, 2) + '\n');
 }
 
+let passes = 0;
+let skips = 0;
 let failures = 0;
 const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  ' + detail : ''}`);
-  if (!ok) failures += 1;
+  if (ok) passes += 1;
+  else failures += 1;
+};
+const skip = (name, reason) => {
+  console.log(`SKIP  ${name}  (${reason})`);
+  skips += 1;
 };
 const textOf = (res) => res.content?.find((c) => c.type === 'text')?.text ?? '';
 const isError = (res) => res.isError === true;
 
-const passed = loadPassed();
+const forceReadRun = process.env.VIGOR_E2E_FORCE_READS === 'true';
+const passed = forceReadRun ? new Set() : loadPassed();
+for (const id of (process.env.VIGOR_DISABLED_TOOLS ?? '').split(',').map((value) => value.trim()).filter(Boolean)) {
+  skip(`read:${id}`, SAFETY_SKIP_REASONS[id] ?? 'disabled by configuration');
+}
 
 const transport = new StdioClientTransport({
   command: 'node',
@@ -166,7 +208,7 @@ const transport = new StdioClientTransport({
 });
 const mcp = new Client({ name: 'vigor3912s-e2e', version: '0.0.1' });
 
-console.log(`target: ${process.env.VIGOR_HOST ?? '192.168.1.1'}:${process.env.VIGOR_PORT ?? 22}  EXPOSE_TOOLS=${process.env.EXPOSE_TOOLS ?? '(all)'}`);
+console.log(`EXPOSE_TOOLS=${process.env.EXPOSE_TOOLS ?? '(all)'}`);
 
 try {
   await mcp.connect(transport);
@@ -189,14 +231,39 @@ try {
     const isWrite = Object.keys(inputSchema.properties ?? {}).includes('signature');
 
     if (!isWrite) {
+      if (id in UNSUPPORTED_READ_TOOLS) {
+        skip(`read:${id}`, UNSUPPORTED_READ_TOOLS[id]);
+        continue;
+      }
       if (passed.has(id)) continue;
+      const args = READ_ARGS(id);
+      const requiredArgs = Array.isArray(inputSchema.required) ? inputSchema.required : [];
+      const missingArgs = requiredArgs.filter((key) => !(key in args));
+      if (missingArgs.length > 0) {
+        skip(`read:${id}`, `no safe representative arguments configured for ${missingArgs.join(', ')}`);
+        continue;
+      }
       try {
-        const res = await mcp.callTool({ name: id, arguments: READ_ARGS(id) });
+        const res = await mcp.callTool({ name: id, arguments: args });
         const t = textOf(res);
-        check(`read:${id}`, t.length > 0, `(${t.length} chars)`);
-        if (t.length > 0) passed.add(id);
-      } catch (e) {
-        check(`read:${id}`, false, e instanceof Error ? e.message : String(e));
+        const rejection = routerCliFailureKind(t);
+        const inputValidationError = /invalid input|input validation|malformed input|required argument/i.test(t);
+        if (isError(res) && inputValidationError) {
+          skip(`read:${id}`, 'input validation; no safe representative arguments configured');
+          continue;
+        }
+        const ok = !isError(res) && t.length > 0 && rejection === undefined;
+        const detail = ok
+          ? `(${t.length} chars)`
+          : isError(res)
+            ? '(tool error)'
+            : rejection
+              ? `(router rejection: ${rejection})`
+              : '(empty output)';
+        check(`read:${id}`, ok, detail);
+        if (ok) passed.add(id);
+      } catch {
+        check(`read:${id}`, false, '(tool call failed; details suppressed)');
       }
       continue;
     }
@@ -238,9 +305,9 @@ try {
   savePassed(passed);
   await mcp.close();
 
-  console.log(failures === 0 ? '\nE2E: ALL PASS' : `\nE2E: ${failures} FAILURE(S)`);
+  console.log(`\nE2E: ${passes} PASS, ${skips} SKIP, ${failures} FAIL`);
   process.exit(failures === 0 ? 0 : 1);
-} catch (e) {
-  console.error('E2E ERROR:', e);
+} catch {
+  console.error('E2E ERROR: live E2E stopped (details suppressed)');
   process.exit(1);
 }

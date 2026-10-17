@@ -68,6 +68,10 @@ function textOf(res: unknown): string {
   return content?.find((c) => c.type === 'text')?.text ?? '';
 }
 
+function isError(res: unknown): boolean {
+  return (res as { isError?: boolean }).isError === true;
+}
+
 afterEach(() => {
   FakeVigorClient.instances = [];
   FakeVigorClient.script = {};
@@ -101,6 +105,36 @@ describe('SDK-backed tool wiring (T2a infrastructure)', () => {
     expect(textOf(res)).toContain('Vigor3912S');
     const wrote = FakeVigorClient.instances.flatMap((c) => c.getStream()?.written ?? []);
     expect(wrote.filter((w) => w.includes('sys version')).length).toBe(1);
+    await server.close();
+  });
+
+  it('requires explicit arguments for traffic views and renders SDK-validated read forms', async () => {
+    FakeVigorClient.script = {
+      'show traffic wan1 tx': 'Traffic graph',
+      'show clienttraffic 01 WAN1 tx': 'Client traffic graph',
+    };
+    const { mcp, server } = await startServer();
+
+    const missingTrafficArgs = await mcp.callTool({ name: 'show_traffic', arguments: {} });
+    const missingClientArgs = await mcp.callTool({ name: 'show_clienttraffic', arguments: {} });
+    expect(isError(missingTrafficArgs)).toBe(true);
+    expect(isError(missingClientArgs)).toBe(true);
+    expect(FakeVigorClient.instances.flatMap((client) => client.written)).toEqual([]);
+
+    const traffic = await mcp.callTool({
+      name: 'show_traffic',
+      arguments: { wan: 'wan1', direction: 'tx' },
+    });
+    const clientTraffic = await mcp.callTool({
+      name: 'show_clienttraffic',
+      arguments: { deviceIndex: 1, interfaceLabel: 'WAN1', direction: 'tx' },
+    });
+    expect(textOf(traffic)).toContain('Traffic graph');
+    expect(textOf(clientTraffic)).toContain('Client traffic graph');
+    expect(FakeVigorClient.instances.flatMap((client) => client.written)).toEqual([
+      'show traffic wan1 tx\r',
+      'show clienttraffic 01 WAN1 tx\r',
+    ]);
     await server.close();
   });
 

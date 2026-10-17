@@ -105,6 +105,48 @@ describe('registry -> MCP tool generation', () => {
     await server.close();
   });
 
+  it('turns raw router rejection output into a sanitized MCP tool error', async () => {
+    const routerOutput = '% Insufficient arguments !!! private router output';
+    FakeVigorClient.script = { '': '', 'show qryrdsl status': routerOutput };
+    const { mcp, server, store } = await startServer();
+    const res = await mcp.callTool({ name: 'show_qryrdsl_status', arguments: {} });
+
+    expect(isError(res)).toBe(true);
+    expect(textOf(res)).toContain('Router rejected "show_qryrdsl_status" (insufficient-arguments).');
+    expect(textOf(res)).not.toContain('private router output');
+    expect(store.query<{ outcome: string; error_msg: string | null }[]>(
+      "SELECT outcome, error_msg FROM requests WHERE tool_id = 'show_qryrdsl_status'",
+    )).toEqual([{
+      outcome: 'error',
+      error_msg: 'Router rejected "show_qryrdsl_status" (insufficient-arguments).',
+    }]);
+    await server.close();
+  });
+
+  it('runs the help-verified DSL status subcommand as a read', async () => {
+    FakeVigorClient.script = { '': '', 'show qryrdsl status': 'Remote DSL status' };
+    const { mcp, server } = await startServer();
+    const res = await mcp.callTool({ name: 'show_qryrdsl_status', arguments: {} });
+
+    expect(isError(res)).toBe(false);
+    expect(textOf(res)).toContain('Remote DSL status');
+    expect(FakeVigorClient.instances.flatMap((client) => client.written)).toContain(
+      'show qryrdsl status\r',
+    );
+    await server.close();
+  });
+
+  it('returns firmware-unsupported read forms as errors without sending them', async () => {
+    const { mcp, server } = await startServer();
+    for (const id of ['sys_pollbuf', 'sys_time', 'show_qryrdsl']) {
+      const res = await mcp.callTool({ name: id, arguments: {} });
+      expect(isError(res), id).toBe(true);
+      expect(textOf(res), id).toContain('Unsupported on firmware 4.4.7_RC2.');
+    }
+    expect(FakeVigorClient.instances.flatMap((client) => client.written)).toEqual([]);
+    await server.close();
+  });
+
   it('returns sensitive read output without persisting it', async () => {
     const output = `radius-secret-${crypto.randomUUID()}`;
     FakeVigorClient.script = { '': '', 'radius show': output };
@@ -345,14 +387,14 @@ describe('registry -> MCP tool generation', () => {
     await server.close();
   });
 
-  it('registers 220 read tools by default and 666 tools with explicit all mode', async () => {
+  it('registers 221 read tools by default and 667 tools with explicit all mode', async () => {
     const read = await startServer(cfg({ exposeTools: { mode: 'list', ids: readCommands().map((cmd) => cmd.id) } }));
-    expect((await read.mcp.listTools()).tools).toHaveLength(220);
+    expect((await read.mcp.listTools()).tools).toHaveLength(221);
     await read.server.close();
 
     const all = await startServer(cfg({ exposeTools: { mode: 'all' } }));
-    expect((await all.mcp.listTools()).tools).toHaveLength(666);
-    expect(allCommands()).toHaveLength(666);
+    expect((await all.mcp.listTools()).tools).toHaveLength(667);
+    expect(allCommands()).toHaveLength(667);
     await all.server.close();
   });
 
