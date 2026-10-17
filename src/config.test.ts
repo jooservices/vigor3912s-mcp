@@ -90,6 +90,10 @@ describe('loadConfig', () => {
     expect(() => base({ VIGOR_PORT: 'not-a-number' })).toThrow(/Invalid VIGOR_/);
   });
 
+  it('fails closed when config values are invalid', () => {
+    expect(() => base({ VIGOR_PORT: '70000' })).toThrow(/Invalid VIGOR_/);
+  });
+
   it('requires approve pubkey when not read-only', () => {
     expect(() =>
       loadConfig({
